@@ -77,7 +77,7 @@ class ObservationQueue {
   Future<void> _openDb() async {
     _db = await openDatabase(
       'spatially_queue.db',
-      version: 8,
+      version: 9,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE $_obsTableName (
@@ -88,7 +88,8 @@ class ObservationQueue {
             is_spatially_device INTEGER NOT NULL,
             volunteer_id TEXT,
             event_id TEXT,
-            zone TEXT
+            zone TEXT,
+            zone_id TEXT
           )
         ''');
 
@@ -113,6 +114,7 @@ class ObservationQueue {
             volunteer_id TEXT NOT NULL,
             target_type TEXT NOT NULL,
             target_id TEXT,
+            target_user_id TEXT,
             zone_id TEXT,
             message_type TEXT NOT NULL,
             priority TEXT NOT NULL,
@@ -464,9 +466,19 @@ class ObservationQueue {
             )
           ''');
         }
+        if (oldVersion < 9) {
+          final obsCols = await db.rawQuery("PRAGMA table_info($_obsTableName)");
+          if (!obsCols.any((col) => col['name'] == 'zone_id')) {
+            await db.execute('ALTER TABLE $_obsTableName ADD COLUMN zone_id TEXT');
+          }
+          final msgCols = await db.rawQuery("PRAGMA table_info(pending_operational_messages)");
+          if (!msgCols.any((col) => col['name'] == 'target_user_id')) {
+            await db.execute('ALTER TABLE pending_operational_messages ADD COLUMN target_user_id TEXT');
+          }
+        }
       },
     );
-    print('ObservationQueue: SQLite database opened (v8) with operational health & analytics ready.');
+    print('ObservationQueue: SQLite database opened (v9) with operational health & analytics ready.');
   }
 
   Database? get db => _db;
@@ -533,6 +545,7 @@ class ObservationQueue {
       'volunteer_id': obs.volunteerId,
       'event_id': obs.eventId,
       'zone': obs.zone,
+      'zone_id': obs.zoneId,
     });
     final count = Sqflite.firstIntValue(
       await db.rawQuery('SELECT COUNT(*) FROM $_obsTableName'),
@@ -744,7 +757,7 @@ class ObservationQueue {
           final supabaseInstance = Supabase.instance;
           final client = supabaseInstance.client;
           final table = client.from('observations');
-          await table.insert({
+          final payload = <String, dynamic>{
             'ephemeral_id': row['ephemeral_id'],
             'rssi': row['rssi'],
             'scanned_at': row['scanned_at'],
@@ -752,7 +765,11 @@ class ObservationQueue {
             'volunteer_id': row['volunteer_id'],
             'event_id': row['event_id'],
             'zone': row['zone'],
-          });
+          };
+          if (row['zone_id'] != null) {
+            payload['zone_id'] = row['zone_id'];
+          }
+          await table.insert(payload);
           await db.delete(
             _obsTableName,
             where: 'id = ?',

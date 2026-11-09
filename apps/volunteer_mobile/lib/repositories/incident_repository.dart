@@ -183,7 +183,7 @@ class IncidentRepository {
       try {
         final client = Supabase.instance.client;
         final res = await client
-            .from('operational_incidents')
+            .from('v_operational_incidents')
             .select()
             .eq('event_id', eventId)
             .order('created_at', ascending: false);

@@ -103,6 +103,7 @@ enum BreakState {
 class VolunteerShift {
   final String id;
   final String eventId;
+  final String? assignmentId;
   final String volunteerId;
   final String? volunteerName;
   final String? teamId;
@@ -125,6 +126,7 @@ class VolunteerShift {
   const VolunteerShift({
     required this.id,
     required this.eventId,
+    this.assignmentId,
     required this.volunteerId,
     this.volunteerName,
     this.teamId,
@@ -157,19 +159,22 @@ class VolunteerShift {
     }
 
     final teamObj = json['event_teams'] as Map<String, dynamic>?;
-    final profileObj = json['profiles'] as Map<String, dynamic>?;
+    final profileObj = json['profiles'] as Map<String, dynamic>? ?? json['volunteer_profile'] as Map<String, dynamic>?;
+    final supervisorObj = json['supervisor_profile'] as Map<String, dynamic>?;
+    final zoneObj = json['event_zones'] as Map<String, dynamic>? ?? json['zones'] as Map<String, dynamic>?;
 
     return VolunteerShift(
       id: json['id'] as String? ?? '',
       eventId: json['event_id'] as String? ?? '',
+      assignmentId: json['assignment_id'] as String?,
       volunteerId: json['volunteer_id'] as String? ?? '',
       volunteerName: json['volunteer_name'] as String? ?? profileObj?['full_name'] as String?,
       teamId: json['team_id'] as String?,
       teamName: json['team_name'] as String? ?? teamObj?['name'] as String?,
       supervisorId: json['supervisor_id'] as String?,
-      supervisorName: json['supervisor_name'] as String?,
+      supervisorName: json['supervisor_name'] as String? ?? supervisorObj?['full_name'] as String?,
       zoneId: json['zone_id'] as String?,
-      zoneName: json['zone_name'] as String?,
+      zoneName: json['zone_name'] as String? ?? zoneObj?['name'] as String?,
       shiftName: json['shift_name'] as String? ?? 'Operational Shift',
       scheduledStart: parseDate(json['scheduled_start']) ?? DateTime.now(),
       scheduledEnd: parseDate(json['scheduled_end']) ?? DateTime.now().add(const Duration(hours: 4)),
@@ -187,6 +192,7 @@ class VolunteerShift {
     return {
       'id': id,
       'event_id': eventId,
+      'assignment_id': assignmentId,
       'volunteer_id': volunteerId,
       'volunteer_name': volunteerName,
       'team_id': teamId,
@@ -209,6 +215,7 @@ class VolunteerShift {
   }
 
   VolunteerShift copyWith({
+    String? assignmentId,
     ShiftStatus? status,
     BreakState? breakState,
     DateTime? actualStart,
@@ -218,6 +225,7 @@ class VolunteerShift {
     return VolunteerShift(
       id: id,
       eventId: eventId,
+      assignmentId: assignmentId ?? this.assignmentId,
       volunteerId: volunteerId,
       volunteerName: volunteerName,
       teamId: teamId,

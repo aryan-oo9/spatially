@@ -137,7 +137,15 @@ class ShiftHandoff {
     List<String> parseList(dynamic val) {
       if (val == null) return const [];
       if (val is List) {
-        return val.map((e) => e.toString()).toList();
+        return val.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList();
+      }
+      if (val is String) {
+        final cleaned = val.trim();
+        if (cleaned.startsWith('{') && cleaned.endsWith('}')) {
+          final inner = cleaned.substring(1, cleaned.length - 1).trim();
+          if (inner.isEmpty) return const [];
+          return inner.split(',').map((e) => e.replaceAll('"', '').trim()).where((e) => e.isNotEmpty).toList();
+        }
       }
       return const [];
     }

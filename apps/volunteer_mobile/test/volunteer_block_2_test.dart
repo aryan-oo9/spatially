@@ -44,6 +44,14 @@ class MockVolunteerAssignmentRepository implements VolunteerAssignmentRepository
     required String eventId,
     String? zoneId,
   }) async => true;
+
+  @override
+  Future<void> assignZone({
+    required String eventId,
+    required String volunteerId,
+    required String zoneId,
+    String? zoneName,
+  }) async {}
 }
 
 class MockTicketCheckInRepository implements TicketCheckInRepository {

@@ -169,16 +169,15 @@ class _HomeScreenState extends State<HomeScreen> {
       if (user != null) {
         final result = await Supabase.instance.client
             .from('tickets')
-            .select('*, events(*)')
+            .select('*, events(*, venues(*))')
             .eq('user_id', user.id)
             .timeout(const Duration(seconds: 4));
         ticketsWithEvents = List<Map<String, dynamic>>.from(result);
       } else if (attendeeId != null) {
         final result = await Supabase.instance.client
             .from('tickets')
-            .select('*, events(*)')
-            .eq('attendee_id', attendeeId)
-            .isFilter('user_id', null)
+            .select('*, events(*, venues(*))')
+            .eq('user_id', user?.id ?? '')
             .timeout(const Duration(seconds: 4));
         ticketsWithEvents = List<Map<String, dynamic>>.from(result);
       }
@@ -202,13 +201,15 @@ class _HomeScreenState extends State<HomeScreen> {
         bestEvent = liveTicket['events'] as Map<String, dynamic>;
         bestTicket = liveTicket;
       } else if (validTickets.isNotEmpty) {
-        // Sort by event_date ascending
+        // Sort by event_start_time / event_date ascending
         validTickets.sort((a, b) {
+          final ea = a['events'] as Map<String, dynamic>?;
+          final eb = b['events'] as Map<String, dynamic>?;
           final da = DateTime.tryParse(
-                  (a['events'] as Map<String, dynamic>)['event_date'] as String? ?? '') ??
+                  (ea?['event_start_time'] ?? ea?['event_date']) as String? ?? '') ??
               DateTime.now();
           final db = DateTime.tryParse(
-                  (b['events'] as Map<String, dynamic>)['event_date'] as String? ?? '') ??
+                  (eb?['event_start_time'] ?? eb?['event_date']) as String? ?? '') ??
               DateTime.now();
           return da.compareTo(db);
         });
@@ -220,14 +221,21 @@ class _HomeScreenState extends State<HomeScreen> {
       if (bestEvent == null) {
         final events = await Supabase.instance.client
             .from('events')
-            .select()
+            .select('*, venues(*)')
             .inFilter('status', ['live', 'upcoming'])
-            .order('event_date', ascending: true)
+            .order('event_start_time', ascending: true)
             .limit(1)
             .timeout(const Duration(seconds: 4));
 
         if (events.isNotEmpty) {
           bestEvent = Map<String, dynamic>.from(events.first);
+        }
+      }
+
+      if (bestEvent != null) {
+        final vo = bestEvent['venues'] as Map<String, dynamic>?;
+        if (vo != null && vo['name'] != null && vo['name'].toString().isNotEmpty) {
+          bestEvent['venue'] = vo['name'].toString();
         }
       }
 

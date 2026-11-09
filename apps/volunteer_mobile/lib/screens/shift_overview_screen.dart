@@ -84,6 +84,7 @@ class _ShiftOverviewScreenState extends State<ShiftOverviewScreen> {
         if (active != null) {
           SessionState.instance.activeShiftId = active.id;
           SessionState.instance.activeShiftName = active.shiftName;
+          SessionState.instance.activeAssignmentId = active.assignmentId;
           SessionState.instance.shiftStatus = active.status.toDbString();
           SessionState.instance.teamId = active.teamId;
           SessionState.instance.teamName = active.teamName;

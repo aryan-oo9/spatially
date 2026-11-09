@@ -278,18 +278,33 @@ class _ShiftHandoffScreenState extends State<ShiftHandoffScreen> {
                 subtitle: const Text('Tap to view incident details', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 11)),
                 trailing: const Icon(Icons.arrow_forward_ios, color: Color(0xFF64748B), size: 14),
                 onTap: () async {
-                  final incidents = await IncidentRepository.instance.fetchIncidents();
-                  final inc = incidents.where((i) => i.id == id).toList();
-                  if (inc.isNotEmpty && mounted) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => IncidentDetailScreen(
-                          incidentId: inc.first.id,
-                          initialIncident: inc.first,
+                  try {
+                    final incidents = await IncidentRepository.instance.fetchIncidents();
+                    final inc = incidents.where((i) => i.id == id).toList();
+                    if (inc.isNotEmpty && mounted) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => IncidentDetailScreen(
+                            incidentId: inc.first.id,
+                            initialIncident: inc.first,
+                          ),
                         ),
-                      ),
-                    );
+                      );
+                    } else if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Incident record is no longer active or available.'),
+                          backgroundColor: Colors.orange,
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Could not open incident: $e'), backgroundColor: Colors.red),
+                      );
+                    }
                   }
                 },
               ),

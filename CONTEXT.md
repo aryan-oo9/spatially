@@ -26,9 +26,17 @@ _Avoid_: Helper, worker, agent
 A tactical grouping of volunteers assigned to an event function (e.g. Crowd Safety, Medical Response, Registration).
 _Avoid_: Group, division, crew
 
+**Volunteer Assignment**:
+A roster record stating that a volunteer is assigned to an event, with a role and zone. It exists before and independently of any on-duty period.
+_Avoid_: Shift, schedule
+
 **Active Shift**:
 A real-time on-duty record linking a volunteer to an event, team, and designated zone.
 _Avoid_: Schedule, work slot
+
+**Registered Attendee**:
+An authenticated user holding a ticket to an event. Only registered attendees can hold tickets.
+_Avoid_: Guest, anonymous attendee
 
 ### Real-Time Signals & Telemetry
 
@@ -37,8 +45,8 @@ Real-time headcount of attendees detected by on-ground volunteers via BLE scanni
 _Avoid_: BLE ping, attendee tracker, device sniffer
 
 **Coverage Request**:
-A real-time relief ticket submitted by an on-duty volunteer needing temporary coverage for a break or emergency.
-_Avoid_: Shift swap, leave notice
+A real-time request submitted by an on-duty volunteer, either for relief (temporary coverage for a break or emergency) or for a swap (exchanging a zone or shift with another volunteer). A swap takes effect when the target volunteer accepts; the organizer is notified but does not approve.
+_Avoid_: Leave notice, switch request
 
 **Operational Incident**:
 A prioritized event issue requiring staff acknowledgment, triage, and volunteer dispatch.

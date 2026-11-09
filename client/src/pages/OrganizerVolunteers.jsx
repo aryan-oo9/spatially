@@ -364,6 +364,66 @@ export default function OrganizerVolunteers() {
                       </tr>
                     );
                   })}
+                  {assignments
+                    .filter(a => !shifts.some(s => s.volunteer_id === a.volunteer_id))
+                    .map(assign => {
+                      const volName = assign.volunteer?.full_name || assign.volunteer_id?.slice(0, 8);
+                      const assignedZone = zones.find(z => z.id === assign.zone_id);
+
+                      return (
+                        <tr key={`assign-${assign.id}`} style={{ opacity: 0.9 }}>
+                          <td>
+                            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                              <div className="avatar" style={{ width: "32px", height: "32px", fontSize: "0.8rem", background: "var(--bg-secondary)" }}>
+                                {volName?.substring(0, 2).toUpperCase()}
+                              </div>
+                              <div>
+                                <div style={{ fontWeight: "700", color: "var(--text-primary)" }}>{volName}</div>
+                                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>ID: {assign.volunteer_id?.slice(0, 8)}</div>
+                              </div>
+                            </div>
+                          </td>
+                          <td>
+                            <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>
+                              {assign.role || "General Volunteer"}
+                            </span>
+                          </td>
+                          <td>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.85rem" }}>
+                              <LuMapPin size={14} color="var(--primary)" />
+                              <strong>{assignedZone?.name || "Unassigned"}</strong>
+                            </div>
+                          </td>
+                          <td>
+                            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>—</div>
+                          </td>
+                          <td>
+                            <span className="badge" style={{ background: "var(--bg-secondary)", border: "1px solid var(--border-light)" }}>
+                              {assign.status === "active" ? "Assigned" : assign.status}
+                            </span>
+                          </td>
+                          <td>
+                            <button
+                              className="btn btn-primary btn-sm"
+                              onClick={() => {
+                                setNewShift({
+                                  volunteer_id: assign.volunteer_id,
+                                  shift_name: "Operations Shift",
+                                  scheduled_start: "",
+                                  scheduled_end: "",
+                                  zone_name: assignedZone?.name || "",
+                                });
+                                setIsShiftModalOpen(true);
+                              }}
+                              style={{ fontSize: "0.75rem", padding: "4px 8px" }}
+                              title="Schedule Shift"
+                            >
+                              <LuPlus size={12} /> Shift
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
             </div>

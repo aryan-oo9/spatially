@@ -53,8 +53,8 @@ class _DirectThreadScreenState extends State<DirectThreadScreen> {
         final isRelevant = widget.isOrganizerChannel
             ? (msg.isOrganizerChannel)
             : (msg.targetType == OperationalTargetType.volunteer &&
-                ((msg.senderId == widget.recipient?.volunteerId && msg.targetId == _myId) ||
-                 (msg.senderId == _myId && msg.targetId == widget.recipient?.volunteerId)));
+                ((msg.senderId == widget.recipient?.volunteerId && (msg.targetUserId ?? msg.targetId) == _myId) ||
+                 (msg.senderId == _myId && (msg.targetUserId ?? msg.targetId) == widget.recipient?.volunteerId)));
 
         if (isRelevant && mounted) {
           setState(() {
@@ -82,8 +82,8 @@ class _DirectThreadScreenState extends State<DirectThreadScreen> {
           return msg.isOrganizerChannel;
         } else {
           return msg.targetType == OperationalTargetType.volunteer &&
-              ((msg.senderId == widget.recipient?.volunteerId && msg.targetId == _myId) ||
-               (msg.senderId == _myId && msg.targetId == widget.recipient?.volunteerId));
+              ((msg.senderId == widget.recipient?.volunteerId && (msg.targetUserId ?? msg.targetId) == _myId) ||
+               (msg.senderId == _myId && (msg.targetUserId ?? msg.targetId) == widget.recipient?.volunteerId));
         }
       }).toList();
 

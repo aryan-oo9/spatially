@@ -25,14 +25,18 @@ class TicketDetailScreen extends StatelessWidget {
 
     final event = ticket['events'] as Map<String, dynamic>?;
     final eventName = event?['name']?.toString() ?? 'Event Admission';
-    final venue = event?['venue']?.toString() ?? 'TBA';
+    final venueObj = event?['venues'] as Map<String, dynamic>?;
+    final venue = venueObj?['name']?.toString() ??
+        ((event?['venue'] != null && event?['venue'] != 'TBA')
+            ? event!['venue'].toString()
+            : 'TBA');
     final ticketCode = ticket['ticket_code']?.toString() ?? '';
     final status = (ticket['status']?.toString() ?? 'purchased').toLowerCase();
     final isPurchased = status == 'purchased';
     final isCheckedIn = status == 'checked_in';
 
     final dateTimeStr = SpatiallyDateFormatter.formatDateTime(
-      event?['event_date'],
+      event?['event_start_time'] ?? event?['event_date'],
       includeYear: true,
     );
 

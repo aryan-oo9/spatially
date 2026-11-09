@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useToast } from "../components/Toast";
 import { api } from "../utils/api";
 import { formatDate, formatTime, getStatusColor } from "../utils/validators";
-import { LuArrowLeft, LuMapPin, LuClock, LuUsers, LuTicket, LuCircleCheck, LuActivity, LuPencil, LuCalendarDays, LuRadar } from "react-icons/lu";
+import { LuArrowLeft, LuMapPin, LuClock, LuUsers, LuTicket, LuCircleCheck, LuActivity, LuPencil, LuCalendarDays, LuRadar, LuX, LuBuilding } from "react-icons/lu";
 import EventCountdown from "../components/EventCountdown";
 import VenueMap from "../components/VenueMap";
 import VolunteerPlacer from "../components/VolunteerPlacer";
@@ -21,6 +21,22 @@ export default function EventDetail() {
   const [selectedVolunteer, setSelectedVolunteer] = useState(null);
   const [mapRefreshKey, setMapRefreshKey] = useState(0);
 
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    description: "",
+    venue_id: "",
+    event_date: "",
+    start_time: "",
+    end_time: "",
+    capacity: "",
+    status: "upcoming",
+    timezone: "UTC",
+  });
+  const [venues, setVenues] = useState([]);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editErrors, setEditErrors] = useState({});
+
   useEffect(() => {
     api.get(`/api/events/${id}`)
       .then((data) => setEvent(data.event))
@@ -30,6 +46,60 @@ export default function EventDetail() {
       })
       .finally(() => setLoading(false));
   }, [id, navigate, toast]);
+
+  const handleOpenEditModal = async () => {
+    if (!event) return;
+    try {
+      const data = await api.get("/api/venues");
+      setVenues(data.venues || []);
+    } catch {}
+
+    setEditForm({
+      name: event.name || "",
+      description: event.description || "",
+      venue_id: event.venue_id || "",
+      event_date: event.event_date || (event.event_start_time ? event.event_start_time.slice(0, 10) : ""),
+      start_time: event.start_time || (event.event_start_time ? event.event_start_time.slice(11, 16) : ""),
+      end_time: event.end_time || (event.event_end_time ? event.event_end_time.slice(11, 16) : ""),
+      capacity: event.capacity != null ? String(event.capacity) : "",
+      status: event.status || "upcoming",
+      timezone: event.timezone || "UTC",
+    });
+    setEditErrors({});
+    setIsEditModalOpen(true);
+  };
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    if (!editForm.name.trim()) {
+      setEditErrors({ name: "Event name is required" });
+      return;
+    }
+    setSavingEdit(true);
+    try {
+      const payload = {
+        name: editForm.name.trim(),
+        description: editForm.description.trim(),
+        venue_id: editForm.venue_id || null,
+        event_date: editForm.event_date || null,
+        start_time: editForm.start_time || null,
+        end_time: editForm.end_time || null,
+        status: editForm.status,
+        timezone: editForm.timezone || "UTC",
+      };
+      if (editForm.capacity) {
+        payload.capacity = parseInt(editForm.capacity, 10) || 0;
+      }
+      const res = await api.put(`/api/events/${id}`, payload);
+      setEvent(res.event);
+      toast("Event updated successfully", "success");
+      setIsEditModalOpen(false);
+    } catch (err) {
+      toast(err.message, "error");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   const handleStatusChange = async (newStatus) => {
     try {
@@ -129,7 +199,7 @@ export default function EventDetail() {
         <div className="card">
           <div className="section-header">
             <h3 className="section-title">Event Information</h3>
-            <button className="btn btn-sm btn-ghost"><LuPencil size={14} /> Edit</button>
+            <button className="btn btn-sm btn-ghost" onClick={handleOpenEditModal}><LuPencil size={14} /> Edit</button>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             <div style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}>
@@ -256,6 +326,171 @@ export default function EventDetail() {
                 <EventLogsPanel eventId={id} refreshTrigger={mapRefreshKey} />
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT EVENT MODAL */}
+      {isEditModalOpen && (
+        <div className="modal-overlay fade-in" onClick={() => setIsEditModalOpen(false)}>
+          <div
+            className="modal"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: "560px", width: "90%", maxHeight: "90vh", overflowY: "auto" }}
+          >
+            <div className="modal-header">
+              <h3 style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "1.1rem" }}>
+                <LuPencil size={18} color="var(--green-400)" /> Edit Event Information
+              </h3>
+              <button
+                className="btn-icon"
+                onClick={() => setIsEditModalOpen(false)}
+                style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}
+              >
+                <LuX size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit}>
+              <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="edit-event-name">Event Name *</label>
+                  <input
+                    id="edit-event-name"
+                    type="text"
+                    className={`form-input ${editErrors.name ? "error" : ""}`}
+                    value={editForm.name}
+                    onChange={(e) => {
+                      setEditForm((prev) => ({ ...prev, name: e.target.value }));
+                      setEditErrors((prev) => ({ ...prev, name: null }));
+                    }}
+                    placeholder="Event Name"
+                  />
+                  {editErrors.name && <p className="form-error">{editErrors.name}</p>}
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="edit-event-desc">Description</label>
+                  <textarea
+                    id="edit-event-desc"
+                    className="form-textarea"
+                    rows={3}
+                    value={editForm.description}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, description: e.target.value }))}
+                    placeholder="Event Description..."
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="edit-event-venue">
+                    <LuBuilding size={14} style={{ display: "inline", marginRight: "4px" }} />
+                    Venue
+                  </label>
+                  <select
+                    id="edit-event-venue"
+                    className="form-select"
+                    value={editForm.venue_id || ""}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, venue_id: e.target.value }))}
+                  >
+                    <option value="">-- Choose Venue --</option>
+                    {venues.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name} {v.address ? `(${v.address})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-row" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="edit-event-date">Date</label>
+                    <input
+                      id="edit-event-date"
+                      type="date"
+                      className="form-input"
+                      value={editForm.event_date}
+                      onChange={(e) => setEditForm((prev) => ({ ...prev, event_date: e.target.value }))}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="edit-event-start">Start Time</label>
+                    <input
+                      id="edit-event-start"
+                      type="time"
+                      className="form-input"
+                      value={editForm.start_time}
+                      onChange={(e) => setEditForm((prev) => ({ ...prev, start_time: e.target.value }))}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="edit-event-end">End Time</label>
+                    <input
+                      id="edit-event-end"
+                      type="time"
+                      className="form-input"
+                      value={editForm.end_time}
+                      onChange={(e) => setEditForm((prev) => ({ ...prev, end_time: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-row" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="edit-event-capacity">Capacity</label>
+                    <input
+                      id="edit-event-capacity"
+                      type="number"
+                      min="0"
+                      className="form-input"
+                      value={editForm.capacity}
+                      onChange={(e) => setEditForm((prev) => ({ ...prev, capacity: e.target.value }))}
+                      placeholder="e.g. 500"
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="edit-event-status">Status</label>
+                    <select
+                      id="edit-event-status"
+                      className="form-select"
+                      value={editForm.status}
+                      onChange={(e) => setEditForm((prev) => ({ ...prev, status: e.target.value }))}
+                    >
+                      <option value="upcoming">Upcoming</option>
+                      <option value="live">Live</option>
+                      <option value="concluded">Concluded</option>
+                      <option value="cancelled">Cancelled</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => setIsEditModalOpen(false)}
+                  disabled={savingEdit}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={savingEdit}
+                >
+                  {savingEdit ? (
+                    <>
+                      <div className="spinner spinner-sm" style={{ marginRight: "6px" }}></div> Saving...
+                    </>
+                  ) : (
+                    "Save Changes"
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

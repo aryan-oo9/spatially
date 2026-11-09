@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:battery_plus/battery_plus.dart';
 import '../app/app_shell.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../services/auth_service.dart';
+import 'login_screen.dart';
 
 class BatteryCheckScreen extends StatefulWidget {
   const BatteryCheckScreen({super.key});
@@ -48,8 +50,13 @@ class _BatteryCheckScreenState extends State<BatteryCheckScreen> {
   void _proceed() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
+        final isAuthenticated = AuthService().isAuthenticated;
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const SpatiallyAppShell()),
+          MaterialPageRoute(
+            builder: (_) => isAuthenticated
+                ? const SpatiallyAppShell()
+                : const LoginScreen(),
+          ),
         );
       }
     });

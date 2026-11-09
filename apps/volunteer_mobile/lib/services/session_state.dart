@@ -60,6 +60,7 @@ class SessionState {
   /// Block 2.5C: Operational Shift Context
   String? activeShiftId;
   String? activeShiftName;
+  String? activeAssignmentId;
   String? shiftStatus; // 'scheduled', 'active', 'on_break', 'handoff_pending', 'completed'
   String? teamId;
   String? teamName;
@@ -71,6 +72,7 @@ class SessionState {
     required String shiftId,
     required String shiftName,
     required String shiftStatus,
+    String? assignmentId,
     String? teamId,
     String? teamName,
     String? supervisorName,
@@ -78,6 +80,7 @@ class SessionState {
     activeShiftId = shiftId;
     activeShiftName = shiftName;
     this.shiftStatus = shiftStatus;
+    activeAssignmentId = assignmentId;
     this.teamId = teamId;
     this.teamName = teamName;
     this.supervisorName = supervisorName;
@@ -86,6 +89,7 @@ class SessionState {
   void clearShiftContext() {
     activeShiftId = null;
     activeShiftName = null;
+    activeAssignmentId = null;
     shiftStatus = null;
     teamId = null;
     teamName = null;
@@ -237,6 +241,7 @@ class SessionState {
     batteryChecked = false;
     activeShiftId = null;
     activeShiftName = null;
+    activeAssignmentId = null;
     shiftStatus = null;
     teamId = null;
     teamName = null;

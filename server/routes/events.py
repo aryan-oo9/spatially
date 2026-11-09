@@ -7,17 +7,47 @@ from datetime import datetime, timezone
 router = APIRouter(prefix="/api/events", tags=["Events"])
 
 
+def synthesize_event_compat(ev: dict) -> dict:
+    """Ensure backwards compatibility for client apps expecting dropped v1 columns."""
+    if not ev:
+        return ev
+    res = dict(ev)
+    start_time = res.get("event_start_time")
+    end_time = res.get("event_end_time")
+    if start_time:
+        if not res.get("event_date"):
+            res["event_date"] = start_time
+        if not res.get("start_time"):
+            res["start_time"] = start_time[11:16] if len(start_time) >= 16 else None
+    if end_time:
+        if not res.get("end_time"):
+            res["end_time"] = end_time[11:16] if len(end_time) >= 16 else None
+    
+    # Resolve venue details from joined relation
+    venues_rel = res.get("venues")
+    if isinstance(venues_rel, dict):
+        res["venue"] = venues_rel.get("name", "")
+        res["location_address"] = venues_rel.get("address", "")
+        if "timezone" not in res or not res["timezone"] or res["timezone"] == "UTC":
+            res["timezone"] = venues_rel.get("timezone", res.get("timezone", "UTC"))
+    elif "venue" not in res:
+        res["venue"] = ""
+        res["location_address"] = ""
+    return res
+
+
 @router.get("/public")
 async def list_public_events():
     supabase = get_supabase()
     result = (
         supabase.table("events")
-        .select("*")
+        .select("*, venues(*)")
         .in_("status", ["upcoming", "live"])
-        .order("event_date", desc=False)
+        .order("event_start_time", desc=False)
         .execute()
     )
-    return {"events": result.data}
+    events = [synthesize_event_compat(ev) for ev in (result.data or [])]
+    return {"events": events}
 
 
 @router.get("/all")
@@ -25,11 +55,12 @@ async def list_all_events(current_user: dict = Depends(get_current_user)):
     supabase = get_supabase()
     result = (
         supabase.table("events")
-        .select("*")
-        .order("event_date", desc=False)
+        .select("*, venues(*)")
+        .order("event_start_time", desc=False)
         .execute()
     )
-    return {"events": result.data}
+    events = [synthesize_event_compat(ev) for ev in (result.data or [])]
+    return {"events": events}
 
 
 @router.get("/organizer/mine")
@@ -37,12 +68,13 @@ async def list_organizer_events(current_user: dict = Depends(require_organizer))
     supabase = get_supabase()
     result = (
         supabase.table("events")
-        .select("*")
+        .select("*, venues(*)")
         .eq("organizer_id", current_user["user_id"])
-        .order("event_date", desc=False)
+        .order("event_start_time", desc=False)
         .execute()
     )
-    return {"events": result.data}
+    events = [synthesize_event_compat(ev) for ev in (result.data or [])]
+    return {"events": events}
 
 
 @router.get("/user/registered")
@@ -50,26 +82,27 @@ async def list_user_registered_events(current_user: dict = Depends(get_current_u
     supabase = get_supabase()
 
     registrations = (
-        supabase.table("user_event_registrations")
+        supabase.table("tickets")
         .select("event_id")
         .eq("user_id", current_user["user_id"])
-        .eq("status", "registered")
+        .in_("status", ["valid", "checked_in"])
         .execute()
     )
 
     if not registrations.data:
         return {"events": []}
 
-    event_ids = [r["event_id"] for r in registrations.data]
+    event_ids = list(set([r["event_id"] for r in registrations.data]))
     events = (
         supabase.table("events")
-        .select("*")
+        .select("*, venues(*)")
         .in_("id", event_ids)
-        .order("event_date", desc=False)
+        .order("event_start_time", desc=False)
         .execute()
     )
 
-    return {"events": events.data}
+    res_events = [synthesize_event_compat(ev) for ev in (events.data or [])]
+    return {"events": res_events}
 
 
 @router.get("/volunteer/assigned")
@@ -94,24 +127,29 @@ async def list_volunteer_assigned_events(
     event_ids = list(set(a["event_id"] for a in assignments.data))
     events = (
         supabase.table("events")
-        .select("*")
+        .select("*, venues(*)")
         .in_("id", event_ids)
-        .order("event_date", desc=False)
+        .order("event_start_time", desc=False)
         .execute()
     )
 
-    return {"events": events.data, "assignments": assignments.data}
+    res_events = [synthesize_event_compat(ev) for ev in (events.data or [])]
+    return {"events": res_events, "assignments": assignments.data}
 
 
 @router.get("/{event_id}")
 async def get_event(event_id: str, current_user: dict = Depends(get_current_user)):
     supabase = get_supabase()
-    result = supabase.table("events").select("*").eq("id", event_id).execute()
+    result = supabase.table("events").select("*, venues(*)").eq("id", event_id).execute()
 
     if not result.data:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    event = result.data[0]
+    event = synthesize_event_compat(result.data[0])
+
+    # Include zones list from event_zones table
+    zones_res = supabase.table("event_zones").select("name").eq("event_id", event_id).order("created_at").execute()
+    event["zones"] = [z["name"] for z in (zones_res.data or [])]
 
     ticket_count = (
         supabase.table("tickets")
@@ -146,47 +184,46 @@ async def get_event(event_id: str, current_user: dict = Depends(get_current_user
 async def create_event(data: EventCreate, current_user: dict = Depends(require_organizer)):
     supabase = get_supabase()
 
+    start_dt = data.event_start_time
+    end_dt = data.event_end_time
+    if not start_dt and data.event_date:
+        t = data.start_time or "00:00:00"
+        start_dt = f"{data.event_date[:10]}T{t}Z"
+    if not end_dt and data.event_date:
+        t = data.end_time or "23:59:59"
+        end_dt = f"{data.event_date[:10]}T{t}Z"
+
     existing = (
         supabase.table("events")
-        .select("id, event_date, start_time, end_time")
+        .select("id, event_start_time, event_end_time")
         .eq("organizer_id", current_user["user_id"])
         .execute()
     )
 
-    for ev in existing.data:
-        if ev.get("event_date") and data.event_date:
-            existing_date = ev["event_date"][:10] if ev["event_date"] else ""
-            new_date = data.event_date[:10] if data.event_date else ""
-
-            if existing_date == new_date:
-                if data.start_time and data.end_time and ev.get("start_time") and ev.get("end_time"):
-                    if not (data.end_time <= ev["start_time"] or data.start_time >= ev["end_time"]):
-                        raise HTTPException(
-                            status_code=409,
-                            detail=f"You already have an event scheduled on {new_date} that overlaps with this time slot",
-                        )
-                else:
+    if start_dt and end_dt:
+        for ev in (existing.data or []):
+            ev_start = ev.get("event_start_time")
+            ev_end = ev.get("event_end_time")
+            if ev_start and ev_end:
+                if not (end_dt <= ev_start or start_dt >= ev_end):
                     raise HTTPException(
                         status_code=409,
-                        detail=f"You already have an event scheduled on {new_date}. Specify start and end times to allow multiple events per day.",
+                        detail=f"You already have an event scheduled that overlaps with this time slot",
                     )
 
     new_event = {
         "name": data.name,
-        "venue": data.venue,
-        "event_date": data.event_date,
+        "venue_id": data.venue_id,
         "status": "upcoming",
-        "zones": data.zones,
         "description": data.description or "",
         "capacity": data.capacity or 0,
         "organizer_id": current_user["user_id"],
-        "organizer_name": data.organizer_name or "",
-        "start_time": data.start_time,
-        "end_time": data.end_time,
-        "location_address": data.location_address or "",
+        "timezone": data.timezone or "UTC",
     }
-    if data.venue_id:
-        new_event["venue_id"] = data.venue_id
+    if start_dt:
+        new_event["event_start_time"] = start_dt
+    if end_dt:
+        new_event["event_end_time"] = end_dt
 
     result = supabase.table("events").insert(new_event).execute()
     created_event = result.data[0]
@@ -211,7 +248,10 @@ async def create_event(data: EventCreate, current_user: dict = Depends(require_o
             except Exception as e:
                 print(f"[WARN] Failed to insert initial event_zones: {e}")
 
-    return {"message": "Event created successfully", "event": created_event}
+    synth_event = synthesize_event_compat(created_event)
+    synth_event["zones"] = data.zones or []
+
+    return {"message": "Event created successfully", "event": synth_event}
 
 
 @router.put("/{event_id}")
@@ -228,16 +268,90 @@ async def update_event(
     if event.get("organizer_id") != current_user["user_id"]:
         raise HTTPException(status_code=403, detail="You can only update your own events")
 
+    allowed_columns = {
+        "name", "description", "capacity", "status", "venue_id",
+        "event_start_time", "event_end_time", "timezone", "banner_url"
+    }
     updates = {}
-    for field, value in data.model_dump(exclude_none=True).items():
-        updates[field] = value
+    dumped = data.model_dump(exclude_none=True)
+    for field, value in dumped.items():
+        if field in allowed_columns:
+            updates[field] = value
+
+    # Compute start / end times if event_date or times were provided
+    start_dt = dumped.get("event_start_time")
+    end_dt = dumped.get("event_end_time")
+
+    date_str = dumped.get("event_date")
+    if not date_str and event.get("event_start_time"):
+        date_str = event["event_start_time"][:10]
+
+    if date_str:
+        if not start_dt and ("start_time" in dumped or "event_date" in dumped):
+            t = dumped.get("start_time") or (event.get("event_start_time")[11:19] if event.get("event_start_time") else "00:00:00")
+            if len(t) == 5:
+                t = f"{t}:00"
+            start_dt = f"{date_str[:10]}T{t}Z"
+            updates["event_start_time"] = start_dt
+
+        if not end_dt and ("end_time" in dumped or "event_date" in dumped):
+            t = dumped.get("end_time") or (event.get("event_end_time")[11:19] if event.get("event_end_time") else "23:59:59")
+            if len(t) == 5:
+                t = f"{t}:00"
+            end_dt = f"{date_str[:10]}T{t}Z"
+            updates["event_end_time"] = end_dt
 
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    result = supabase.table("events").update(updates).eq("id", event_id).execute()
+    supabase.table("events").update(updates).eq("id", event_id).execute()
 
-    return {"message": "Event updated successfully", "event": result.data[0]}
+    # Re-fetch event with venues joined, matching get_event
+    updated = (
+        supabase.table("events")
+        .select("*, venues(*)")
+        .eq("id", event_id)
+        .execute()
+    )
+    if not updated.data:
+        raise HTTPException(status_code=500, detail="Failed to retrieve updated event")
+
+    synth_event = synthesize_event_compat(updated.data[0])
+
+    zones_res = (
+        supabase.table("event_zones")
+        .select("name")
+        .eq("event_id", event_id)
+        .order("created_at")
+        .execute()
+    )
+    synth_event["zones"] = [z["name"] for z in (zones_res.data or [])]
+
+    ticket_count = (
+        supabase.table("tickets")
+        .select("id", count="exact")
+        .eq("event_id", event_id)
+        .execute()
+    )
+    checkin_count = (
+        supabase.table("tickets")
+        .select("id", count="exact")
+        .eq("event_id", event_id)
+        .eq("status", "checked_in")
+        .execute()
+    )
+    volunteer_count = (
+        supabase.table("volunteer_assignments")
+        .select("id", count="exact")
+        .eq("event_id", event_id)
+        .execute()
+    )
+
+    synth_event["ticket_count"] = ticket_count.count or 0
+    synth_event["checkin_count"] = checkin_count.count or 0
+    synth_event["volunteer_count"] = volunteer_count.count or 0
+
+    return {"message": "Event updated successfully", "event": synth_event}
 
 
 @router.put("/{event_id}/status")
@@ -271,6 +385,41 @@ async def delete_event(event_id: str, current_user: dict = Depends(require_organ
     if existing.data[0].get("organizer_id") != current_user["user_id"]:
         raise HTTPException(status_code=403, detail="You can only delete your own events")
 
+    # Clean up storage files if present
+    banner_url = existing.data[0].get("banner_url")
+    if banner_url:
+        try:
+            file_name = banner_url.split("/")[-1].split("?")[0]
+            supabase.storage.from_("event-banners").remove([file_name])
+        except Exception as e:
+            print(f"[WARN] Failed to delete event storage file: {e}")
+
+    # Defensive cleanup of related child entities before deleting parent event
+    child_tables = [
+        "volunteer_assignments",
+        "coverage_requests",
+        "shift_handoffs",
+        "supervisor_tasks",
+        "volunteer_shifts",
+        "operational_incident_logs",
+        "operational_incidents",
+        "operational_messages",
+        "event_invitations",
+        "observations",
+        "lost_found_reports",
+        "safety_resources",
+        "event_activity_logs",
+        "event_zones",
+        "event_teams",
+        "tickets",
+    ]
+    for table_name in child_tables:
+        try:
+            supabase.table(table_name).delete().eq("event_id", event_id).execute()
+        except Exception:
+            pass
+
+    # Delete the event
     supabase.table("events").delete().eq("id", event_id).execute()
 
     return {"message": "Event deleted successfully"}
@@ -294,7 +443,7 @@ async def register_for_event(
         raise HTTPException(status_code=400, detail="Cannot register for an ended event")
 
     existing = (
-        supabase.table("user_event_registrations")
+        supabase.table("tickets")
         .select("id, status")
         .eq("user_id", current_user["user_id"])
         .eq("event_id", event_id)
@@ -302,44 +451,47 @@ async def register_for_event(
     )
     
     if existing.data:
-        if existing.data[0].get("status") == "registered":
+        active_ticket = next((t for t in existing.data if t.get("status") in ["valid", "checked_in"]), None)
+        if active_ticket:
             raise HTTPException(status_code=409, detail="You are already registered for this event")
         else:
-            # Check capacity if re-registering
+            # Re-activate cancelled ticket if space allows
             if ev.get("capacity") and ev["capacity"] > 0:
-                reg_count = (
-                    supabase.table("user_event_registrations")
+                ticket_count = (
+                    supabase.table("tickets")
                     .select("id", count="exact")
                     .eq("event_id", event_id)
-                    .eq("status", "registered")
+                    .in_("status", ["valid", "checked_in"])
                     .execute()
                 )
-                if (reg_count.count or 0) >= ev["capacity"]:
+                if (ticket_count.count or 0) >= ev["capacity"]:
                     raise HTTPException(status_code=409, detail="Event has reached maximum capacity")
             
-            # Re-register by updating status
-            supabase.table("user_event_registrations").update(
-                {"status": "registered"}
-            ).eq("user_id", current_user["user_id"]).eq("event_id", event_id).execute()
+            supabase.table("tickets").update(
+                {"status": "valid"}
+            ).eq("id", existing.data[0]["id"]).execute()
             
             return {"message": "Successfully registered for the event"}
 
     if ev.get("capacity") and ev["capacity"] > 0:
-        reg_count = (
-            supabase.table("user_event_registrations")
+        ticket_count = (
+            supabase.table("tickets")
             .select("id", count="exact")
             .eq("event_id", event_id)
-            .eq("status", "registered")
+            .in_("status", ["valid", "checked_in"])
             .execute()
         )
-        if (reg_count.count or 0) >= ev["capacity"]:
+        if (ticket_count.count or 0) >= ev["capacity"]:
             raise HTTPException(status_code=409, detail="Event has reached maximum capacity")
 
-    supabase.table("user_event_registrations").insert(
+    import uuid
+    ticket_code = f"TICK-{uuid.uuid4().hex[:8].upper()}"
+    supabase.table("tickets").insert(
         {
             "user_id": current_user["user_id"],
             "event_id": event_id,
-            "status": "registered",
+            "ticket_code": ticket_code,
+            "status": "valid",
         }
     ).execute()
 
@@ -353,20 +505,20 @@ async def cancel_registration(
     supabase = get_supabase()
 
     existing = (
-        supabase.table("user_event_registrations")
+        supabase.table("tickets")
         .select("id")
         .eq("user_id", current_user["user_id"])
         .eq("event_id", event_id)
-        .eq("status", "registered")
+        .in_("status", ["valid", "checked_in"])
         .execute()
     )
 
     if not existing.data:
         raise HTTPException(status_code=404, detail="Registration not found")
 
-    supabase.table("user_event_registrations").update(
+    supabase.table("tickets").update(
         {"status": "cancelled"}
-    ).eq("user_id", current_user["user_id"]).eq("event_id", event_id).execute()
+    ).eq("id", existing.data[0]["id"]).execute()
 
     return {"message": "Registration cancelled successfully"}
 

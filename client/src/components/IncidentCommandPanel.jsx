@@ -10,7 +10,7 @@ export default function IncidentCommandPanel({ eventId }) {
 
   const fetchIncidents = async () => {
     try {
-      let query = supabase.from("operational_incidents").select("*").eq("event_id", eventId).order("created_at", { ascending: false });
+      let query = supabase.from("v_operational_incidents").select("*").eq("event_id", eventId).order("created_at", { ascending: false });
       
       if (filter === "active") {
         query = query.in("status", ["reported", "acknowledged", "assigned", "in_progress"]);

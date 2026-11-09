@@ -7,6 +7,7 @@ import 'data/profile_repository.dart';
 import 'models/profile_preferences.dart';
 import 'models/user_profile.dart';
 import 'screens/app_preferences_screen.dart';
+import '../../screens/login_screen.dart';
 import 'screens/edit_profile_screen.dart';
 import 'screens/help_support_screen.dart';
 import 'screens/notification_settings_screen.dart';
@@ -159,13 +160,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _handleSignOut() async {
     try {
       await AuthService().signOut();
-      await _loadProfileData();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Signed out successfully. Switched to guest mode.'),
-            duration: Duration(seconds: 2),
-          ),
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
         );
       }
     } catch (e) {

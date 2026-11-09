@@ -37,6 +37,7 @@ void main() {
       final shift = VolunteerShift(
         id: 'shift-001',
         eventId: 'event-demo',
+        assignmentId: 'assign-777',
         volunteerId: 'vol-42',
         volunteerName: 'Aryan Operator',
         teamId: 'team-crowd',
@@ -58,6 +59,7 @@ void main() {
 
       final json = shift.toJson();
       expect(json['id'], 'shift-001');
+      expect(json['assignment_id'], 'assign-777');
       expect(json['status'], 'active');
       expect(json['break_state'], 'none');
       expect(json['team_name'], 'Crowd Operations');
@@ -65,6 +67,7 @@ void main() {
 
       final deserialized = VolunteerShift.fromJson(json);
       expect(deserialized.id, 'shift-001');
+      expect(deserialized.assignmentId, 'assign-777');
       expect(deserialized.volunteerId, 'vol-42');
       expect(deserialized.isActive, isTrue);
       expect(deserialized.isOnBreak, isFalse);
@@ -508,6 +511,24 @@ void main() {
       expect(deserialized.isPending, isTrue);
       expect(deserialized.unresolvedIncidentIds, contains('inc-1001'));
       expect(deserialized.pendingTaskIds, contains('task-501'));
+    });
+
+    test('ShiftHandoff parses raw PostgreSQL array literal string format gracefully', () {
+      final json = {
+        'id': 'hoff-pg-1',
+        'event_id': 'event-demo',
+        'shift_id': 'shift-100',
+        'outgoing_volunteer_id': 'vol-42',
+        'operational_summary': 'Briefing with postgres array format',
+        'unresolved_incident_ids': '{c0a80101-0000-0000-0000-000000000001,c0a80101-0000-0000-0000-000000000002}',
+        'pending_task_ids': '{task-01}',
+        'status': 'pending',
+      };
+      final deserialized = ShiftHandoff.fromJson(json);
+      expect(deserialized.unresolvedIncidentIds.length, 2);
+      expect(deserialized.unresolvedIncidentIds, contains('c0a80101-0000-0000-0000-000000000001'));
+      expect(deserialized.pendingTaskIds.length, 1);
+      expect(deserialized.pendingTaskIds, contains('task-01'));
     });
 
     test('Handoff acknowledgment updates status atomically', () {

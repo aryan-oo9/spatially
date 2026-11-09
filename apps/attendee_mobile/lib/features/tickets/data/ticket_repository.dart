@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../../services/attendee_identity.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/offline_service.dart';
 import '../../explore/data/event_cache_manager.dart';
@@ -34,66 +33,56 @@ class TicketRepositoryImpl implements TicketRepository {
   @override
   Future<List<Map<String, dynamic>>> getMyTickets() async {
     final user = _supabase.auth.currentUser;
-    final deviceId = AttendeeIdentity.deviceId;
     final isOnline = await _offlineService.checkConnectivity();
 
     if (!isOnline) {
       return _cacheManager.getCachedTickets(userId: user?.id);
     }
 
+    if (user == null) {
+      return [];
+    }
+
     try {
-      List<dynamic> result;
-      if (user != null) {
-        // 1. Authenticated User: Query tickets owned by this user account via RLS
-        result = await _supabase
-            .from('tickets')
-            .select('*, events(*)')
-            .eq('user_id', user.id)
-            .order('purchased_at', ascending: false)
-            .timeout(const Duration(seconds: 4));
-      } else if (deviceId != null) {
-        // 2. Guest User: Query unclaimed tickets matching local device UUID
-        result = await _supabase
-            .from('tickets')
-            .select('*, events(*)')
-            .eq('attendee_id', deviceId)
-            .isFilter('user_id', null)
-            .order('purchased_at', ascending: false)
-            .timeout(const Duration(seconds: 4));
-      } else {
-        return [];
-      }
+      // Authenticated User: Query tickets owned by this registered user account via RLS (ADR 0001)
+      final result = await _supabase
+          .from('tickets')
+          .select('*, events(*, venues(*))')
+          .eq('user_id', user.id)
+          .order('purchased_at', ascending: false)
+          .timeout(const Duration(seconds: 4));
 
       final tickets = List<Map<String, dynamic>>.from(result);
-      await _cacheManager.cacheTickets(tickets, userId: user?.id);
+      await _cacheManager.cacheTickets(tickets, userId: user.id);
       _offlineService.reportSuccessfulOnlineRequest();
       return tickets;
     } catch (e) {
       debugPrint('Error fetching tickets online, falling back to cache: $e');
       _offlineService.reportFailedNetworkRequest();
-      return _cacheManager.getCachedTickets(userId: user?.id);
+      return _cacheManager.getCachedTickets(userId: user.id);
     }
   }
 
   @override
   Future<ClaimTicketsResult> claimGuestTickets() async {
-    return AuthService().claimGuestTickets();
+    // ADR 0001: Anonymous guest tickets retired; registered-only tickets are bound upon creation.
+    return const ClaimTicketsResult(success: true, claimedCount: 0);
   }
 
   @override
   Future<Map<String, dynamic>?> getGuestTicketByCode(String ticketCode) async {
     try {
-      final response = await _supabase.rpc(
-        'get_guest_ticket',
-        params: {'p_ticket_code': ticketCode},
-      ).timeout(const Duration(seconds: 4));
-
-      if (response is Map<String, dynamic> && response['found'] == true) {
-        return response['ticket'] as Map<String, dynamic>?;
-      }
-      return null;
+      final user = _supabase.auth.currentUser;
+      if (user == null) return null;
+      final res = await _supabase
+          .from('tickets')
+          .select('*, events(*, venues(*))')
+          .eq('ticket_code', ticketCode)
+          .eq('user_id', user.id)
+          .maybeSingle();
+      return res;
     } catch (e) {
-      debugPrint('Error fetching ticket via get_guest_ticket RPC: $e');
+      debugPrint('Error fetching ticket by code: $e');
       return null;
     }
   }

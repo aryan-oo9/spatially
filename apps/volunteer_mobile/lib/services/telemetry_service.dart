@@ -57,9 +57,10 @@ class TelemetryService {
 
     final volunteerId = SessionState.instance.volunteerId;
     final zoneCode = SessionState.instance.zoneCode ?? SessionState.instance.zone;
+    final zoneId = SessionState.instance.zoneId;
     final eventId = SessionState.instance.eventId;
 
-    if (volunteerId == null || zoneCode == null || eventId == null) {
+    if (volunteerId == null || eventId == null) {
       // Missing session information, ignore tick.
       return;
     }
@@ -71,11 +72,14 @@ class TelemetryService {
       final Map<String, dynamic> row = {
         'volunteer_id': volunteerId,
         'event_id': eventId,
-        'zone': zoneCode,
+        'zone': zoneCode ?? 'roving',
         'active_count': activeCount,
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       };
-      // Upsert on primary key (volunteer_id)
+      if (zoneId != null) {
+        row['zone_id'] = zoneId;
+      }
+      // Upsert on primary key (volunteer_id, event_id, zone_id)
       await table.upsert(row);
       _lastCountSyncAt = DateTime.now();
     } catch (e) {

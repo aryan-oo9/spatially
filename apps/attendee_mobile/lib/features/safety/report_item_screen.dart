@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../design_system/design_system.dart';
 import 'data/lost_found_repository.dart';
 import 'models/safety_models.dart';
@@ -48,6 +49,30 @@ class _ReportItemScreenState extends State<ReportItemScreen> {
   void initState() {
     super.initState();
     _selectedType = widget.initialType;
+    _loadEventZones();
+  }
+
+  Future<void> _loadEventZones() async {
+    try {
+      final res = await Supabase.instance.client
+          .from('event_zones')
+          .select('id, name')
+          .eq('event_id', widget.eventId)
+          .order('name');
+      if (mounted && (res as List).isNotEmpty) {
+        setState(() {
+          _venueZones.clear();
+          for (final z in res) {
+            _venueZones.add({
+              'id': z['id'].toString(),
+              'name': z['name'].toString(),
+            });
+          }
+          _selectedZoneId = _venueZones.first['id']!;
+          _selectedZoneName = _venueZones.first['name']!;
+        });
+      }
+    } catch (_) {}
   }
 
   @override

@@ -68,6 +68,20 @@ class _ZoneSelectionScreenState extends State<ZoneSelectionScreen> {
       _isSaving = true;
     });
 
+    final volunteerId = SessionState.instance.volunteerId ?? Supabase.instance.client.auth.currentUser?.id;
+    if (volunteerId != null) {
+      try {
+        await _assignmentRepo.assignZone(
+          eventId: eventId,
+          volunteerId: volunteerId,
+          zoneId: _selectedZone!.id,
+          zoneName: _selectedZone!.name,
+        );
+      } catch (err) {
+        print('Zone selection sync error: $err');
+      }
+    }
+
     // Populate session state and persist active shift to local storage (survives app restart)
     await SessionState.instance.persistShift(
       newEventId: eventId,

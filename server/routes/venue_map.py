@@ -2,6 +2,8 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import uuid
+import math
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 from config import get_supabase
 from middleware.auth import get_current_user, require_organizer, require_volunteer
@@ -46,7 +48,6 @@ async def get_zone_density(event_id: str, current_user: dict = Depends(get_curre
         supabase.table("event_zones")
         .select("id, name, code, capacity_limit, operating_capacity, warning_threshold, critical_threshold, operational_status")
         .eq("event_id", event_id)
-        .eq("is_active", True)
         .execute()
     )
 
@@ -57,37 +58,28 @@ async def get_zone_density(event_id: str, current_user: dict = Depends(get_curre
         zone_meta[z["name"]] = z
         density[z["name"]] = 0
 
-    # Try RPC first for live crowd data
+    # Try RPC first for live crowd data, then fallback to volunteer_counts
+    got_crowd = False
     try:
         crowd = supabase.rpc("get_zone_crowd_summary", {"p_event_id": event_id}).execute()
-        for row in crowd.data:
-            zone = row.get("zone_name", "unknown")
-            count = row.get("active_count", 0)
-            density[zone] = count
-    except Exception as e:
-        print(f"[venue_map] RPC crowd summary failed, falling back: {e}")
-        # Fallback: query crowd_zone_snapshots for latest per zone
+        if crowd and crowd.data:
+            for row in crowd.data:
+                zone = row.get("zone_name", "unknown")
+                count = row.get("active_count", 0)
+                density[zone] = count
+            got_crowd = True
+    except Exception:
+        pass
+
+    if not got_crowd:
         try:
-            snaps = (
-                supabase.table("crowd_zone_snapshots")
-                .select("zone_id, estimated_count, snapshot_at")
-                .eq("event_id", event_id)
-                .order("snapshot_at", desc=True)
-                .limit(100)
-                .execute()
-            )
-            seen_zones = set()
-            for row in snaps.data:
-                zid = row["zone_id"]
-                if zid not in seen_zones:
-                    seen_zones.add(zid)
-                    # Map zone_id back to name
-                    for z in zones_res.data:
-                        if z["id"] == zid:
-                            density[z["name"]] = row.get("estimated_count", 0)
-                            break
-        except Exception as e2:
-            print(f"[venue_map] Snapshot fallback also failed: {e2}")
+            vc_res = supabase.table("volunteer_counts").select("zone, active_count").eq("event_id", event_id).execute()
+            for row in (vc_res.data or []):
+                z = row.get("zone")
+                if z and z in density:
+                    density[z] = density.get(z, 0) + (row.get("active_count") or 0)
+        except Exception:
+            pass
 
     return {
         "event_id": event_id,
@@ -132,7 +124,6 @@ async def get_zone_layout(
             "venue_zone:venue_zones(id, code, name, polygon, bounds, entrance_point)"
         )
         .eq("event_id", event_id)
-        .eq("is_active", True)
     )
 
     if level_id:
@@ -288,10 +279,10 @@ async def get_volunteer_positions(event_id: str, current_user: dict = Depends(ge
     """Get all active volunteer positions with live crowd counts and dynamic node colors."""
     supabase = get_supabase()
 
-    # 1. Get active/scheduled shifts for this event
+    # 1. Get active/scheduled shifts for this event via v_volunteer_shifts
     shifts = (
-        supabase.table("volunteer_shifts")
-        .select("id, volunteer_id, zone_id, zone_name, status, break_state, scheduled_start, scheduled_end, team_id")
+        supabase.table("v_volunteer_shifts")
+        .select("id, volunteer_id, zone_id, zone_name, status, break_state, scheduled_start, scheduled_end, team_id, volunteer_name, volunteer_avatar_url")
         .eq("event_id", event_id)
         .in_("status", ["scheduled", "active", "on_break"])
         .execute()
@@ -301,16 +292,14 @@ async def get_volunteer_positions(event_id: str, current_user: dict = Depends(ge
         return {"positions": []}
 
     # 2. Volunteer profile names
-    vol_ids = list(set(s["volunteer_id"] for s in shifts.data if s.get("volunteer_id")))
-    vol_map = {}
-    if vol_ids:
-        profiles = (
-            supabase.table("profiles")
-            .select("id, full_name, avatar_url")
-            .in_("id", vol_ids)
-            .execute()
-        )
-        vol_map = {p["id"]: p for p in (profiles.data or [])}
+    vol_map = {
+        s["volunteer_id"]: {
+            "id": s["volunteer_id"],
+            "full_name": s.get("volunteer_name") or "Staff Member",
+            "avatar_url": s.get("volunteer_avatar_url"),
+        }
+        for s in shifts.data if s.get("volunteer_id")
+    }
 
     # 3. Live volunteer proximity counts from volunteer_counts
     counts_res = supabase.table("volunteer_counts").select("*").eq("event_id", event_id).execute()
@@ -322,8 +311,8 @@ async def get_volunteer_positions(event_id: str, current_user: dict = Depends(ge
         if z:
             zone_counts[z] = zone_counts.get(z, 0) + c.get("active_count", 0)
 
-    # 4. Active urgent incidents
-    incidents_res = supabase.table("operational_incidents").select("zone_id, venue_zone_name, priority, status").eq("event_id", event_id).execute()
+    # 4. Active urgent incidents via v_operational_incidents
+    incidents_res = supabase.table("v_operational_incidents").select("zone_id, venue_zone_name, priority, status").eq("event_id", event_id).execute()
     active_incidents = [i for i in (incidents_res.data or []) if i.get("status") not in ("resolved", "closed")]
     urgent_zone_ids = {i.get("zone_id") for i in active_incidents if i.get("priority") in ("urgent", "critical")}
     urgent_zone_names = {i.get("venue_zone_name") for i in active_incidents if i.get("priority") in ("urgent", "critical")}
@@ -460,7 +449,7 @@ async def assign_volunteer_zone(
     if not event.data or event.data[0].get("organizer_id") != current_user["user_id"]:
         raise HTTPException(status_code=403, detail="You can only manage your own events")
 
-    # Verify volunteer is assigned to this event
+    # Verify volunteer is assigned to this event or create active assignment
     assignment = (
         supabase.table("volunteer_assignments")
         .select("id")
@@ -469,7 +458,30 @@ async def assign_volunteer_zone(
         .execute()
     )
     if not assignment.data:
-        raise HTTPException(status_code=400, detail="Volunteer is not assigned to this event")
+        # Create an assignment automatically if missing
+        as_res = supabase.table("volunteer_assignments").insert({
+            "event_id": event_id,
+            "volunteer_id": volunteer_id,
+            "status": "active",
+            "role": "crowd_monitor",
+        }).execute()
+        assignment_id = as_res.data[0]["id"]
+    else:
+        assignment_id = assignment.data[0]["id"]
+
+    if not zone_id and zone_name:
+        z_lookup = supabase.table("event_zones").select("id, name").eq("event_id", event_id).ilike("name", zone_name.strip()).execute()
+        if z_lookup.data:
+            zone_id = z_lookup.data[0]["id"]
+            zone_name = z_lookup.data[0]["name"]
+    elif zone_id and not zone_name:
+        z_lookup = supabase.table("event_zones").select("name").eq("id", zone_id).execute()
+        if z_lookup.data:
+            zone_name = z_lookup.data[0]["name"]
+
+    # Sync zone to volunteer_assignments
+    if zone_id:
+        supabase.table("volunteer_assignments").update({"zone_id": zone_id}).eq("id", assignment_id).execute()
 
     # Update or create shift with zone
     existing_shift = (
@@ -481,18 +493,32 @@ async def assign_volunteer_zone(
         .execute()
     )
 
-    update_data = {}
-    if zone_id:
-        update_data["zone_id"] = zone_id
-    if zone_name:
-        update_data["zone_name"] = zone_name
-
+    now_utc = datetime.now(timezone.utc)
     if existing_shift.data:
-        supabase.table("volunteer_shifts").update(update_data).eq(
-            "id", existing_shift.data[0]["id"]
-        ).execute()
+        supabase.table("volunteer_shifts").update({
+            "zone_id": zone_id,
+            "status": "active",
+            "updated_at": now_utc.isoformat(),
+        }).eq("id", existing_shift.data[0]["id"]).execute()
     else:
-        raise HTTPException(status_code=404, detail="No active shift found for this volunteer")
+        # Auto-create active shift with assignment_id
+        event_res = supabase.table("events").select("event_start_time, event_end_time").eq("id", event_id).execute()
+        evt = event_res.data[0] if event_res.data else {}
+        start_time = evt.get("event_start_time") or now_utc.isoformat()
+        end_time = evt.get("event_end_time") or (now_utc + timedelta(hours=8)).isoformat()
+
+        supabase.table("volunteer_shifts").insert({
+            "event_id": event_id,
+            "volunteer_id": volunteer_id,
+            "assignment_id": assignment_id,
+            "zone_id": zone_id,
+            "shift_name": "Operational Shift",
+            "scheduled_start": start_time,
+            "scheduled_end": end_time,
+            "actual_start": now_utc.isoformat(),
+            "status": "active",
+            "break_state": "none",
+        }).execute()
 
     try:
         supabase.table("event_activity_logs").insert({
@@ -524,6 +550,39 @@ async def update_volunteer_zone(
     if not event.data or event.data[0].get("organizer_id") != current_user["user_id"]:
         raise HTTPException(status_code=403, detail="You can only manage your own events")
 
+    # Verify or create assignment
+    assignment = (
+        supabase.table("volunteer_assignments")
+        .select("id")
+        .eq("event_id", event_id)
+        .eq("volunteer_id", volunteer_id)
+        .execute()
+    )
+    if not assignment.data:
+        as_res = supabase.table("volunteer_assignments").insert({
+            "event_id": event_id,
+            "volunteer_id": volunteer_id,
+            "status": "active",
+            "role": "crowd_monitor",
+        }).execute()
+        assignment_id = as_res.data[0]["id"]
+    else:
+        assignment_id = assignment.data[0]["id"]
+
+    if not zone_id and zone_name:
+        z_lookup = supabase.table("event_zones").select("id, name").eq("event_id", event_id).ilike("name", zone_name.strip()).execute()
+        if z_lookup.data:
+            zone_id = z_lookup.data[0]["id"]
+            zone_name = z_lookup.data[0]["name"]
+    elif zone_id and not zone_name:
+        z_lookup = supabase.table("event_zones").select("name").eq("id", zone_id).execute()
+        if z_lookup.data:
+            zone_name = z_lookup.data[0]["name"]
+
+    # Sync zone to volunteer_assignments
+    if zone_id:
+        supabase.table("volunteer_assignments").update({"zone_id": zone_id}).eq("id", assignment_id).execute()
+
     existing_shift = (
         supabase.table("volunteer_shifts")
         .select("id")
@@ -533,18 +592,31 @@ async def update_volunteer_zone(
         .execute()
     )
 
-    if not existing_shift.data:
-        raise HTTPException(status_code=404, detail="No active shift found for volunteer")
+    now_utc = datetime.now(timezone.utc)
+    if existing_shift.data:
+        supabase.table("volunteer_shifts").update({
+            "zone_id": zone_id,
+            "status": "active",
+            "updated_at": now_utc.isoformat(),
+        }).eq("id", existing_shift.data[0]["id"]).execute()
+    else:
+        event_res = supabase.table("events").select("event_start_time, event_end_time").eq("id", event_id).execute()
+        evt = event_res.data[0] if event_res.data else {}
+        start_time = evt.get("event_start_time") or now_utc.isoformat()
+        end_time = evt.get("event_end_time") or (now_utc + timedelta(hours=8)).isoformat()
 
-    update_data = {}
-    if zone_id:
-        update_data["zone_id"] = zone_id
-    if zone_name:
-        update_data["zone_name"] = zone_name
-
-    supabase.table("volunteer_shifts").update(update_data).eq(
-        "id", existing_shift.data[0]["id"]
-    ).execute()
+        supabase.table("volunteer_shifts").insert({
+            "event_id": event_id,
+            "volunteer_id": volunteer_id,
+            "assignment_id": assignment_id,
+            "zone_id": zone_id,
+            "shift_name": "Operational Shift",
+            "scheduled_start": start_time,
+            "scheduled_end": end_time,
+            "actual_start": now_utc.isoformat(),
+            "status": "active",
+            "break_state": "none",
+        }).execute()
 
     return {"message": "Zone assignment updated"}
 
@@ -562,6 +634,9 @@ async def remove_volunteer_zone(
     if not event.data or event.data[0].get("organizer_id") != current_user["user_id"]:
         raise HTTPException(status_code=403, detail="You can only manage your own events")
 
+    # Clear zone on volunteer_assignments
+    supabase.table("volunteer_assignments").update({"zone_id": None}).eq("event_id", event_id).eq("volunteer_id", volunteer_id).execute()
+
     existing_shift = (
         supabase.table("volunteer_shifts")
         .select("id")
@@ -571,13 +646,10 @@ async def remove_volunteer_zone(
         .execute()
     )
 
-    if not existing_shift.data:
-        raise HTTPException(status_code=404, detail="No active shift found for volunteer")
-
-    supabase.table("volunteer_shifts").update({
-        "zone_id": None,
-        "zone_name": None,
-    }).eq("id", existing_shift.data[0]["id"]).execute()
+    if existing_shift.data:
+        supabase.table("volunteer_shifts").update({
+            "zone_id": None,
+        }).eq("id", existing_shift.data[0]["id"]).execute()
 
     return {"message": "Zone assignment removed"}
 
@@ -600,7 +672,7 @@ async def create_switch_request(
 
     requester_shift = (
         supabase.table("volunteer_shifts")
-        .select("id")
+        .select("id, zone_id, team_id")
         .eq("event_id", event_id)
         .eq("volunteer_id", current_user["user_id"])
         .in_("status", ["scheduled", "active", "on_break"])
@@ -608,7 +680,7 @@ async def create_switch_request(
     )
     target_shift = (
         supabase.table("volunteer_shifts")
-        .select("id")
+        .select("id, zone_id, team_id")
         .eq("event_id", event_id)
         .eq("volunteer_id", data.target_volunteer_id)
         .in_("status", ["scheduled", "active", "on_break"])
@@ -620,25 +692,41 @@ async def create_switch_request(
     if not target_shift.data:
         raise HTTPException(status_code=400, detail="Target volunteer doesn't have an active shift")
 
-    # Check for existing pending request
+    if current_user["user_id"] == data.target_volunteer_id:
+        raise HTTPException(status_code=400, detail="Cannot request a swap with yourself")
+
+    # Check for existing pending request in canonical coverage_requests
     existing = (
-        supabase.table("volunteer_switch_requests")
+        supabase.table("coverage_requests")
         .select("id")
         .eq("event_id", event_id)
         .eq("requester_id", current_user["user_id"])
-        .eq("target_id", data.target_volunteer_id)
-        .eq("status", "pending")
+        .eq("covering_volunteer_id", data.target_volunteer_id)
+        .eq("request_type", "swap")
+        .eq("status", "requested")
         .execute()
     )
 
     if existing.data:
         raise HTTPException(status_code=409, detail="You already have a pending switch request with this volunteer")
 
-    supabase.table("volunteer_switch_requests").insert({
+    rs = requester_shift.data[0]
+    ts = target_shift.data[0]
+
+    supabase.table("coverage_requests").insert({
         "event_id": event_id,
+        "shift_id": rs["id"],
+        "target_shift_id": ts["id"],
         "requester_id": current_user["user_id"],
-        "target_id": data.target_volunteer_id,
-        "status": "pending",
+        "covering_volunteer_id": data.target_volunteer_id,
+        "zone_id": rs.get("zone_id"),
+        "target_zone_id": ts.get("zone_id"),
+        "team_id": rs.get("team_id"),
+        "reason": getattr(data, "reason", "personal") or "personal",
+        "notes": getattr(data, "notes", "Zone swap request") or "Zone swap request",
+        "request_type": "swap",
+        "status": "requested",
+        "priority": "normal",
     }).execute()
 
     return {"message": f"Switch request sent to {data.target_volunteer_id}"}
@@ -646,46 +734,28 @@ async def create_switch_request(
 
 @router.get("/my-switch-requests")
 async def get_my_switch_requests(current_user: dict = Depends(require_volunteer)):
-    """Get all pending switch requests involving this volunteer."""
+    """Get all pending switch requests involving this volunteer using v_coverage_requests."""
     supabase = get_supabase()
 
     incoming = (
-        supabase.table("volunteer_switch_requests")
+        supabase.table("v_coverage_requests")
         .select("*")
-        .eq("target_id", current_user["user_id"])
-        .eq("status", "pending")
+        .eq("covering_volunteer_id", current_user["user_id"])
+        .eq("request_type", "swap")
+        .eq("status", "requested")
         .execute()
     )
 
     outgoing = (
-        supabase.table("volunteer_switch_requests")
+        supabase.table("v_coverage_requests")
         .select("*")
         .eq("requester_id", current_user["user_id"])
-        .eq("status", "pending")
+        .eq("request_type", "swap")
+        .eq("status", "requested")
         .execute()
     )
 
-    all_ids = set()
-    for r in incoming.data + outgoing.data:
-        all_ids.add(r["requester_id"])
-        all_ids.add(r["target_id"])
-
-    vol_names = {}
-    if all_ids:
-        profiles = (
-            supabase.table("profiles")
-            .select("id, full_name")
-            .in_("id", list(all_ids))
-            .execute()
-        )
-        vol_names = {p["id"]: p["full_name"] for p in profiles.data}
-
-    for r in incoming.data:
-        r["requester_name"] = vol_names.get(r["requester_id"], r["requester_id"])
-    for r in outgoing.data:
-        r["target_name"] = vol_names.get(r["target_id"], r["target_id"])
-
-    event_ids = set(r["event_id"] for r in incoming.data + outgoing.data)
+    event_ids = set(r["event_id"] for r in (incoming.data or []) + (outgoing.data or []))
     event_names = {}
     if event_ids:
         evts = (
@@ -694,25 +764,30 @@ async def get_my_switch_requests(current_user: dict = Depends(require_volunteer)
             .in_("id", list(event_ids))
             .execute()
         )
-        event_names = {e["id"]: e["name"] for e in evts.data}
+        event_names = {e["id"]: e["name"] for e in (evts.data or [])}
 
-    for r in incoming.data + outgoing.data:
+    for r in incoming.data or []:
         r["event_name"] = event_names.get(r["event_id"], "Unknown Event")
+        r["target_id"] = r.get("covering_volunteer_id")
+    for r in outgoing.data or []:
+        r["event_name"] = event_names.get(r["event_id"], "Unknown Event")
+        r["target_id"] = r.get("covering_volunteer_id")
+        r["target_name"] = r.get("covering_volunteer_name")
 
-    return {"incoming": incoming.data, "outgoing": outgoing.data}
+    return {"incoming": incoming.data or [], "outgoing": outgoing.data or []}
 
 
 @router.post("/switch-request/{request_id}/accept")
 async def accept_switch_request(request_id: str, current_user: dict = Depends(require_volunteer)):
-    """Accept a switch request — swaps both volunteers' zone assignments in their shifts."""
+    """Accept a switch request — swaps both volunteers' zone assignments in their shifts and notifies organizer."""
     supabase = get_supabase()
 
     req = (
-        supabase.table("volunteer_switch_requests")
+        supabase.table("coverage_requests")
         .select("*")
         .eq("id", request_id)
-        .eq("target_id", current_user["user_id"])
-        .eq("status", "pending")
+        .eq("covering_volunteer_id", current_user["user_id"])
+        .eq("status", "requested")
         .execute()
     )
 
@@ -723,7 +798,7 @@ async def accept_switch_request(request_id: str, current_user: dict = Depends(re
 
     requester_shift = (
         supabase.table("volunteer_shifts")
-        .select("id, zone_id, zone_name")
+        .select("id, zone_id")
         .eq("event_id", switch_req["event_id"])
         .eq("volunteer_id", switch_req["requester_id"])
         .in_("status", ["scheduled", "active", "on_break"])
@@ -731,9 +806,9 @@ async def accept_switch_request(request_id: str, current_user: dict = Depends(re
     )
     target_shift = (
         supabase.table("volunteer_shifts")
-        .select("id, zone_id, zone_name")
+        .select("id, zone_id")
         .eq("event_id", switch_req["event_id"])
-        .eq("volunteer_id", switch_req["target_id"])
+        .eq("volunteer_id", switch_req["covering_volunteer_id"])
         .in_("status", ["scheduled", "active", "on_break"])
         .execute()
     )
@@ -747,23 +822,36 @@ async def accept_switch_request(request_id: str, current_user: dict = Depends(re
     # Swap zones
     supabase.table("volunteer_shifts").update({
         "zone_id": ts["zone_id"],
-        "zone_name": ts["zone_name"],
     }).eq("id", rs["id"]).execute()
 
     supabase.table("volunteer_shifts").update({
         "zone_id": rs["zone_id"],
-        "zone_name": rs["zone_name"],
     }).eq("id", ts["id"]).execute()
 
-    supabase.table("volunteer_switch_requests").update(
-        {"status": "accepted"}
-    ).eq("id", request_id).execute()
+    from datetime import datetime, timezone
+    supabase.table("coverage_requests").update({
+        "status": "accepted",
+        "accepted_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", request_id).execute()
+
+    # Notify organizer via operational_messages (Q9b decision)
+    try:
+        supabase.table("operational_messages").insert({
+            "event_id": switch_req["event_id"],
+            "sender_id": current_user["user_id"],
+            "target_type": "organizer",
+            "message_type": "alert",
+            "priority": "normal",
+            "body": f"Zone swap completed between volunteers {switch_req['requester_id']} and {switch_req['covering_volunteer_id']}.",
+        }).execute()
+    except Exception as e:
+        print(f"[WARN] Failed to dispatch swap notification message: {e}")
 
     try:
         supabase.table("event_activity_logs").insert({
             "event_id": switch_req["event_id"],
             "action_type": "switch",
-            "description": f"Volunteers {switch_req['requester_id']} and {switch_req['target_id']} swapped zones",
+            "description": f"Volunteers {switch_req['requester_id']} and {switch_req['covering_volunteer_id']} swapped zones",
             "actor_id": current_user["user_id"],
         }).execute()
     except Exception:
@@ -774,22 +862,22 @@ async def accept_switch_request(request_id: str, current_user: dict = Depends(re
 
 @router.post("/switch-request/{request_id}/decline")
 async def decline_switch_request(request_id: str, current_user: dict = Depends(require_volunteer)):
-    """Decline a switch request."""
+    """Decline a switch request in coverage_requests."""
     supabase = get_supabase()
 
     req = (
-        supabase.table("volunteer_switch_requests")
+        supabase.table("coverage_requests")
         .select("id")
         .eq("id", request_id)
-        .eq("target_id", current_user["user_id"])
-        .eq("status", "pending")
+        .eq("covering_volunteer_id", current_user["user_id"])
+        .eq("status", "requested")
         .execute()
     )
 
     if not req.data:
         raise HTTPException(status_code=404, detail="Switch request not found or already processed")
 
-    supabase.table("volunteer_switch_requests").update(
+    supabase.table("coverage_requests").update(
         {"status": "declined"}
     ).eq("id", request_id).execute()
 

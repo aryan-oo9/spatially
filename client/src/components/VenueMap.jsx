@@ -149,6 +149,7 @@ export default function VenueMap({
   const [draggedVol, setDraggedVol] = useState(null);
   const [previewPos, setPreviewPos] = useState(null);
   const [draggedZoneIndex, setDraggedZoneIndex] = useState(null);
+  const [isDragOver, setIsDragOver] = useState(false);
 
   // Compute tactical network graph topology between volunteer nodes
   const graphEdges = useMemo(() => {
@@ -423,6 +424,72 @@ export default function VenueMap({
     }
   };
 
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    if (!containerRef.current) return;
+
+    let volunteerId = e.dataTransfer.getData("text/plain");
+    if (!volunteerId) {
+      try {
+        const json = JSON.parse(e.dataTransfer.getData("application/json") || "{}");
+        volunteerId = json.volunteerId;
+      } catch {}
+    }
+    if (!volunteerId) return;
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const dropX = Math.max(0, Math.min(containerSize.w, e.clientX - rect.left));
+    const dropY = Math.max(0, Math.min(containerSize.h, e.clientY - rect.top));
+    const posX = Math.round((dropX / containerSize.w) * 100);
+    const posY = Math.round((dropY / containerSize.h) * 100);
+
+    let closest = activeLayout[0]?.zone || activeLayout[0]?.name || "Unknown";
+    let minD = Infinity;
+    for (const z of activeLayout) {
+      const zX = (z.x ?? 0.5) * 100;
+      const zY = (z.y ?? 0.5) * 100;
+      const dx = zX - posX;
+      const dy = zY - posY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < minD) {
+        minD = dist;
+        closest = z.zone || z.name;
+      }
+    }
+
+    if (onZoneClick) {
+      onZoneClick(closest, posX, posY, volunteerId);
+    }
+  };
+
+  const handleSvgClick = (e) => {
+    if (!selectedVolunteer || !containerRef.current || !onZoneClick) return;
+    if (mode === "edit-zones" || mode === "create-event") return;
+
+    const rect = containerRef.current.getBoundingClientRect();
+    const clickX = Math.max(0, Math.min(containerSize.w, e.clientX - rect.left));
+    const clickY = Math.max(0, Math.min(containerSize.h, e.clientY - rect.top));
+    const posX = Math.round((clickX / containerSize.w) * 100);
+    const posY = Math.round((clickY / containerSize.h) * 100);
+
+    let closest = activeLayout[0]?.zone || activeLayout[0]?.name || "Unknown";
+    let minD = Infinity;
+    for (const z of activeLayout) {
+      const zX = (z.x ?? 0.5) * 100;
+      const zY = (z.y ?? 0.5) * 100;
+      const dx = zX - posX;
+      const dy = zY - posY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < minD) {
+        minD = dist;
+        closest = z.zone || z.name;
+      }
+    }
+
+    onZoneClick(closest, posX, posY, selectedVolunteer);
+  };
+
   return (
     <div className="venue-map-wrapper" style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
       
@@ -541,16 +608,52 @@ export default function VenueMap({
       <div 
         className="venue-map-container" 
         ref={containerRef} 
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          if (!isDragOver) setIsDragOver(true);
+        }}
+        onDragEnter={(e) => {
+          e.preventDefault();
+          setIsDragOver(true);
+        }}
+        onDragLeave={(e) => {
+          if (e.currentTarget === e.target) {
+            setIsDragOver(false);
+          }
+        }}
+        onDrop={handleDrop}
         style={{ 
           position: "relative", 
           width: "100%", 
           borderRadius: "12px", 
           overflow: "hidden", 
-          border: "1px solid var(--border-light)",
+          border: isDragOver ? "2px dashed var(--green-400)" : "1px solid var(--border-light)",
           backgroundColor: "#080c16",
-          userSelect: "none"
+          userSelect: "none",
+          transition: "border 0.2s ease"
         }}
       >
+        {isDragOver && (
+          <div style={{
+            position: "absolute",
+            top: "16px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "rgba(16, 185, 129, 0.95)",
+            color: "#fff",
+            padding: "8px 20px",
+            borderRadius: "20px",
+            fontWeight: "600",
+            fontSize: "0.85rem",
+            pointerEvents: "none",
+            zIndex: 30,
+            boxShadow: "0 4px 16px rgba(0,0,0,0.5)"
+          }}>
+            Drop to assign volunteer to zone
+          </div>
+        )}
+
         {loading && (
           <div className="venue-map-loading" style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.6)", zIndex: 10 }}>
             <div className="spinner"></div>
@@ -562,7 +665,15 @@ export default function VenueMap({
           height={containerSize.h}
           viewBox={`0 0 ${containerSize.w} ${containerSize.h}`}
           className="venue-map-svg"
-          style={{ display: "block", cursor: (mode === "edit-zones" || mode === "create-event") ? "crosshair" : "default" }}
+          style={{
+            display: "block",
+            cursor: (mode === "edit-zones" || mode === "create-event")
+              ? "crosshair"
+              : selectedVolunteer
+              ? "crosshair"
+              : "default"
+          }}
+          onClick={handleSvgClick}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerLeave={handlePointerUp}
@@ -656,7 +767,13 @@ export default function VenueMap({
                 key={zl.zone_id || zl.id || zName}
                 onMouseEnter={() => setHoveredZone(zName)}
                 onMouseLeave={() => setHoveredZone(null)}
-                style={{ cursor: isEdit ? "move" : "pointer" }}
+                onClick={(e) => {
+                  if (selectedVolunteer && onZoneClick && !isEdit) {
+                    e.stopPropagation();
+                    onZoneClick(zName, Math.round(zl.x * 100), Math.round(zl.y * 100), selectedVolunteer);
+                  }
+                }}
+                style={{ cursor: isEdit ? "move" : selectedVolunteer ? "crosshair" : "pointer" }}
               >
                 {/* Zone Polygon */}
                 <polygon

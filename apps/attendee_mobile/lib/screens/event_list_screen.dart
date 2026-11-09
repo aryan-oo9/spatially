@@ -39,9 +39,9 @@ class _EventListScreenState extends State<EventListScreen> {
     try {
       final response = await Supabase.instance.client
           .from('events')
-          .select()
+          .select('*, venues(*)')
           .inFilter('status', ['upcoming', 'live'])
-          .order('event_date', ascending: true);
+          .order('event_start_time', ascending: true);
 
       final list = (response as List)
           .map((row) => SpatiallyEvent.fromJson(Map<String, dynamic>.from(row)))

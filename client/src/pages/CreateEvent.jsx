@@ -12,12 +12,13 @@ export default function CreateEvent() {
   const [submitting, setSubmitting] = useState(false);
   const [zoneInput, setZoneInput] = useState("");
   const [venues, setVenues] = useState([]);
-  const [selectedVenueMode, setSelectedVenueMode] = useState("select"); // 'select' | 'custom'
+  const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
   const [form, setForm] = useState({
     name: "",
     venue: "",
-    venue_id: null,
+    venue_id: "",
+    timezone: browserTz,
     event_date: "",
     start_time: "",
     end_time: "",
@@ -36,9 +37,18 @@ export default function CreateEvent() {
     api.get("/api/venues")
       .then((data) => {
         setVenues(data.venues || []);
+        if (data.venues && data.venues.length > 0 && !form.venue_id) {
+          const first = data.venues[0];
+          setForm((prev) => ({
+            ...prev,
+            venue_id: first.id,
+            venue: first.name,
+            location_address: first.address || prev.location_address,
+          }));
+        }
       })
       .catch(() => {
-        // Venues optional
+        // Venues fetch fallback
       });
   }, []);
 
@@ -48,27 +58,18 @@ export default function CreateEvent() {
   };
 
   const handleVenueSelect = (venueId) => {
-    if (venueId === "custom") {
-      setSelectedVenueMode("custom");
+    const v = venues.find((item) => item.id === venueId);
+    if (v) {
       setForm((prev) => ({
         ...prev,
-        venue_id: null,
-        venue: "",
-        location_address: "",
+        venue_id: v.id,
+        venue: v.name,
+        location_address: v.address || prev.location_address,
+        capacity: v.default_capacity ? String(v.default_capacity) : prev.capacity,
       }));
+      setErrors((prev) => ({ ...prev, venue_id: null, venue: null }));
     } else {
-      setSelectedVenueMode("select");
-      const v = venues.find((item) => item.id === venueId);
-      if (v) {
-        setForm((prev) => ({
-          ...prev,
-          venue_id: v.id,
-          venue: v.name,
-          location_address: v.address || prev.location_address,
-          capacity: v.default_capacity ? String(v.default_capacity) : prev.capacity,
-        }));
-        setErrors((prev) => ({ ...prev, venue: null }));
-      }
+      setForm((prev) => ({ ...prev, venue_id: venueId }));
     }
   };
 
@@ -112,6 +113,7 @@ export default function CreateEvent() {
     const newErrors = {};
     if (!form.name.trim()) newErrors.name = "Event name is required";
     if (!form.organizer_name.trim()) newErrors.organizer_name = "Organizer name is required";
+    if (!form.venue_id) newErrors.venue_id = "Please select a registered venue";
     if (!form.venue.trim()) newErrors.venue = "Venue name is required";
     if (!form.event_date) newErrors.event_date = "Event date is required";
     if (form.event_date && form.event_date < getMinDate()) {
@@ -263,18 +265,18 @@ export default function CreateEvent() {
               </label>
               <select
                 id="venue-select"
-                className="form-select"
-                value={selectedVenueMode === "custom" ? "custom" : (form.venue_id || "")}
+                className={`form-select ${errors.venue_id ? "error" : ""}`}
+                value={form.venue_id || ""}
                 onChange={(e) => handleVenueSelect(e.target.value)}
               >
-                <option value="">-- Choose Venue or Custom --</option>
+                <option value="">-- Choose Registered Venue --</option>
                 {venues.map((v) => (
                   <option key={v.id} value={v.id}>
                     {v.name} {v.address ? `(${v.address})` : ""}
                   </option>
                 ))}
-                <option value="custom">+ Enter Custom Venue</option>
               </select>
+              {errors.venue_id && <p className="form-error">{errors.venue_id}</p>}
             </div>
 
             <div className="form-group">
@@ -301,10 +303,37 @@ export default function CreateEvent() {
         <div className="card" style={{ marginBottom: "20px" }}>
           <h3 className="card-title" style={{ marginBottom: "20px" }}>Schedule (Mandatory)</h3>
 
-          <div className="form-group">
-            <label className="form-label" htmlFor="event-date">Event Date *</label>
-            <input id="event-date" type="date" className={`form-input ${errors.event_date ? "error" : ""}`} min={getMinDate()} value={form.event_date} onChange={(e) => updateField("event_date", e.target.value)} />
-            {errors.event_date && <p className="form-error">{errors.event_date}</p>}
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label" htmlFor="event-date">Event Date *</label>
+              <input id="event-date" type="date" className={`form-input ${errors.event_date ? "error" : ""}`} min={getMinDate()} value={form.event_date} onChange={(e) => updateField("event_date", e.target.value)} />
+              {errors.event_date && <p className="form-error">{errors.event_date}</p>}
+            </div>
+
+            <div className="form-group">
+              <label className="form-label" htmlFor="event-tz">Event Timezone *</label>
+              <select
+                id="event-tz"
+                className="form-select"
+                value={form.timezone}
+                onChange={(e) => updateField("timezone", e.target.value)}
+              >
+                <option value="UTC">UTC</option>
+                <option value="America/New_York">America/New_York (Eastern)</option>
+                <option value="America/Chicago">America/Chicago (Central)</option>
+                <option value="America/Denver">America/Denver (Mountain)</option>
+                <option value="America/Los_Angeles">America/Los_Angeles (Pacific)</option>
+                <option value="Europe/London">Europe/London (GMT/BST)</option>
+                <option value="Europe/Paris">Europe/Paris (CET)</option>
+                <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
+                <option value="Asia/Tokyo">Asia/Tokyo (JST)</option>
+                <option value="Asia/Singapore">Asia/Singapore (SGT)</option>
+                <option value="Australia/Sydney">Australia/Sydney (AEST)</option>
+                {form.timezone && !["UTC", "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "Europe/London", "Europe/Paris", "Asia/Kolkata", "Asia/Tokyo", "Asia/Singapore", "Australia/Sydney"].includes(form.timezone) && (
+                  <option value={form.timezone}>{form.timezone} (Local)</option>
+                )}
+              </select>
+            </div>
           </div>
 
           <div className="form-row">

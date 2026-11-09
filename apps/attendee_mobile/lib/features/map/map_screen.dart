@@ -6,7 +6,6 @@ import '../../design_system/spatially_typography.dart';
 import '../../design_system/spatially_spacing.dart';
 import '../../design_system/components/spatially_app_bar.dart';
 import '../../design_system/components/spatially_button.dart';
-import '../../services/attendee_identity.dart';
 import '../../services/offline_service.dart';
 import '../explore/data/event_cache_manager.dart';
 import '../explore/models/spatially_event.dart';
@@ -120,16 +119,16 @@ class _MapScreenState extends State<MapScreen> {
         }
       }
 
-      final attendeeId = AttendeeIdentity.deviceId;
+      final user = Supabase.instance.client.auth.currentUser;
       SpatiallyEvent? resolvedEvent;
 
       // 1. Check if attendee has a ticket for a live/upcoming event
-      if (attendeeId != null) {
+      if (user != null) {
         try {
           final ticketData = await Supabase.instance.client
               .from('tickets')
-              .select('*, events(*)')
-              .eq('attendee_id', attendeeId)
+              .select('*, events(*, venues(*))')
+              .eq('user_id', user.id)
               .order('purchased_at', ascending: false)
               .timeout(const Duration(seconds: 4));
 
@@ -155,7 +154,7 @@ class _MapScreenState extends State<MapScreen> {
         try {
           final liveEvents = await Supabase.instance.client
               .from('events')
-              .select()
+              .select('*, venues(*)')
               .eq('status', 'live')
               .limit(1)
               .timeout(const Duration(seconds: 4));
@@ -171,9 +170,9 @@ class _MapScreenState extends State<MapScreen> {
         try {
           final upcomingEvents = await Supabase.instance.client
               .from('events')
-              .select()
+              .select('*, venues(*)')
               .eq('status', 'upcoming')
-              .order('event_date', ascending: true)
+              .order('event_start_time', ascending: true)
               .limit(1)
               .timeout(const Duration(seconds: 4));
 

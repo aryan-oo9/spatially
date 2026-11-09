@@ -18,6 +18,14 @@ abstract class VolunteerAssignmentRepository {
     required String eventId,
     String? zoneId,
   });
+
+  /// Assigns volunteer to an operational zone, persisting the shift to Supabase.
+  Future<void> assignZone({
+    required String eventId,
+    required String volunteerId,
+    required String zoneId,
+    String? zoneName,
+  });
 }
 
 class VolunteerAssignmentRepositoryImpl implements VolunteerAssignmentRepository {
@@ -139,6 +147,93 @@ class VolunteerAssignmentRepositoryImpl implements VolunteerAssignmentRepository
     } catch (e) {
       print('VolunteerAssignmentRepository ERROR verifying assignment: $e');
       return false;
+    }
+  }
+
+  @override
+  Future<void> assignZone({
+    required String eventId,
+    required String volunteerId,
+    required String zoneId,
+    String? zoneName,
+  }) async {
+    try {
+      // 1. Get existing assignment
+      final assignmentRes = await _supabase
+          .from('volunteer_assignments')
+          .select('id')
+          .eq('volunteer_id', volunteerId)
+          .eq('event_id', eventId)
+          .maybeSingle();
+
+      String? assignmentId = assignmentRes != null ? assignmentRes['id'] as String? : null;
+      if (assignmentId == null) {
+        try {
+          final newAssign = await _supabase
+              .from('volunteer_assignments')
+              .insert({
+                'event_id': eventId,
+                'volunteer_id': volunteerId,
+                'status': 'active',
+                'role': 'crowd_monitor',
+                'zone_id': zoneId,
+              })
+              .select('id')
+              .single();
+          assignmentId = newAssign['id'] as String?;
+        } catch (e) {
+          print('VolunteerAssignmentRepository note: assignment insert fallback $e');
+        }
+      } else {
+        try {
+          await _supabase
+              .from('volunteer_assignments')
+              .update({'zone_id': zoneId})
+              .eq('id', assignmentId);
+        } catch (e) {
+          print('VolunteerAssignmentRepository note: assignment update fallback $e');
+        }
+      }
+
+      // 2. Update or insert active shift in volunteer_shifts
+      final existingShifts = await _supabase
+          .from('volunteer_shifts')
+          .select('id')
+          .eq('volunteer_id', volunteerId)
+          .eq('event_id', eventId)
+          .inFilter('status', ['scheduled', 'active', 'on_break']);
+
+      final nowUtc = DateTime.now().toUtc();
+      if ((existingShifts as List).isNotEmpty) {
+        final shiftId = existingShifts[0]['id'];
+        await _supabase
+            .from('volunteer_shifts')
+            .update({
+              'zone_id': zoneId,
+              'status': 'active',
+              'actual_start': nowUtc.toIso8601String(),
+              'updated_at': nowUtc.toIso8601String(),
+            })
+            .eq('id', shiftId);
+      } else if (assignmentId != null) {
+        await _supabase
+            .from('volunteer_shifts')
+            .insert({
+              'event_id': eventId,
+              'volunteer_id': volunteerId,
+              'assignment_id': assignmentId,
+              'zone_id': zoneId,
+              'shift_name': 'Operational Shift',
+              'scheduled_start': nowUtc.toIso8601String(),
+              'scheduled_end': nowUtc.add(const Duration(hours: 8)).toIso8601String(),
+              'actual_start': nowUtc.toIso8601String(),
+              'status': 'active',
+              'break_state': 'none',
+            });
+      }
+    } catch (e) {
+      print('VolunteerAssignmentRepository ERROR assigning zone: $e');
+      rethrow;
     }
   }
 }

@@ -81,11 +81,14 @@ class VolunteerSignupRequest(BaseModel):
 
 class EventCreate(BaseModel):
     name: str
-    venue: str
-    venue_id: Optional[str] = None
-    event_date: str
+    venue: Optional[str] = None
+    venue_id: str
+    timezone: Optional[str] = "UTC"
+    event_date: Optional[str] = None
     start_time: Optional[str] = None
     end_time: Optional[str] = None
+    event_start_time: Optional[str] = None
+    event_end_time: Optional[str] = None
     description: Optional[str] = ""
     capacity: Optional[int] = 0
     zones: List[str] = []
@@ -99,18 +102,11 @@ class EventCreate(BaseModel):
             raise ValueError("Event name is required")
         return v.strip()
 
-    @field_validator("venue")
+    @field_validator("venue_id")
     @classmethod
-    def check_venue(cls, v):
+    def check_venue_id(cls, v):
         if not v or not v.strip():
             raise ValueError("Venue is required")
-        return v.strip()
-
-    @field_validator("event_date")
-    @classmethod
-    def check_date(cls, v):
-        if not v or not v.strip():
-            raise ValueError("Event date is required")
         return v.strip()
 
 
@@ -118,9 +114,12 @@ class EventUpdate(BaseModel):
     name: Optional[str] = None
     venue: Optional[str] = None
     venue_id: Optional[str] = None
+    timezone: Optional[str] = None
     event_date: Optional[str] = None
     start_time: Optional[str] = None
     end_time: Optional[str] = None
+    event_start_time: Optional[str] = None
+    event_end_time: Optional[str] = None
     description: Optional[str] = None
     capacity: Optional[int] = None
     zones: Optional[List[str]] = None
@@ -138,10 +137,7 @@ class InviteByIdRequest(BaseModel):
     def check_volunteer_id(cls, v):
         if not v or not v.strip():
             raise ValueError("Volunteer ID is required")
-        v = v.strip().upper()
-        if not v.startswith("V") or not v[1:].isdigit():
-            raise ValueError("Volunteer ID must be in format V1, V2, etc.")
-        return v
+        return v.strip()
 
 
 class InviteByEmailRequest(BaseModel):
@@ -158,12 +154,10 @@ class InviteBulkRequest(BaseModel):
     def check_volunteer_ids(cls, v):
         if not v:
             raise ValueError("At least one Volunteer ID is required")
-        for i, val in enumerate(v):
-            val = val.strip().upper()
-            if not val.startswith("V") or not val[1:].isdigit():
-                raise ValueError(f"Volunteer ID '{val}' must be in format V1, V2, etc.")
-            v[i] = val
-        return v
+        cleaned = [val.strip() for val in v if val and val.strip()]
+        if not cleaned:
+            raise ValueError("At least one valid Volunteer ID is required")
+        return cleaned
 
 
 class ProfileUpdate(BaseModel):
@@ -234,6 +228,8 @@ class UpdatePositionRequest(BaseModel):
 
 class SwitchPositionRequest(BaseModel):
     target_volunteer_id: str
+    reason: Optional[str] = "break"
+    notes: Optional[str] = None
 
     @field_validator("target_volunteer_id")
     @classmethod

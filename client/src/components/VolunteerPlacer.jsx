@@ -8,6 +8,7 @@ export default function VolunteerPlacer({ eventId, onSelectVolunteer, selectedVo
   const [volunteers, setVolunteers] = useState([]);
   const [positions, setPositions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [draggingId, setDraggingId] = useState(null);
 
   useEffect(() => {
     async function fetchData() {
@@ -27,11 +28,23 @@ export default function VolunteerPlacer({ eventId, onSelectVolunteer, selectedVo
     fetchData();
   }, [eventId, refreshTrigger]);
 
-  const placedIds = new Set(positions.map((p) => p.volunteer_user_id));
-  const placedVols = volunteers.filter((v) => placedIds.has(v.user_id));
-  const unplacedVols = volunteers.filter((v) => !placedIds.has(v.user_id));
+  const placedIds = new Set(positions.map((p) => p.volunteer_user_id || p.volunteer_id));
+  const placedVols = volunteers.filter((v) => placedIds.has(v.id || v.user_id));
+  const unplacedVols = volunteers.filter((v) => !placedIds.has(v.id || v.user_id));
 
-  const getPosition = (userId) => positions.find((p) => p.volunteer_user_id === userId);
+  const getPosition = (userId) => positions.find((p) => (p.volunteer_user_id || p.volunteer_id) === userId);
+
+  const handleDragStart = (e, uid) => {
+    e.dataTransfer.setData("text/plain", uid);
+    e.dataTransfer.setData("application/json", JSON.stringify({ volunteerId: uid }));
+    e.dataTransfer.effectAllowed = "move";
+    setDraggingId(uid);
+    onSelectVolunteer(uid);
+  };
+
+  const handleDragEnd = () => {
+    setDraggingId(null);
+  };
 
   const handleRemove = async (e, userId) => {
     e.stopPropagation();
@@ -66,10 +79,15 @@ export default function VolunteerPlacer({ eventId, onSelectVolunteer, selectedVo
         <span className="badge badge-upcoming">{volunteers.length} total</span>
       </div>
 
-      {selectedVolunteer && (
+      {selectedVolunteer ? (
         <div className="volunteer-placer-hint">
           <LuCircleAlert size={14} />
-          Click a zone on the map to place <strong>{selectedVolunteer}</strong>
+          Drag or click a zone on the map to place <strong>{selectedVolunteer}</strong>
+        </div>
+      ) : (
+        <div className="volunteer-placer-hint" style={{ color: "var(--text-muted)" }}>
+          <LuGripVertical size={14} />
+          Drag any volunteer onto the venue map to assign zone
         </div>
       )}
 
@@ -77,31 +95,38 @@ export default function VolunteerPlacer({ eventId, onSelectVolunteer, selectedVo
       {unplacedVols.length > 0 && (
         <div className="volunteer-placer-section">
           <div className="volunteer-placer-section-label">Unplaced ({unplacedVols.length})</div>
-          {unplacedVols.map((v) => (
-            <div
-              key={v.user_id}
-              className={`volunteer-placer-item ${selectedVolunteer === v.user_id ? "selected" : ""}`}
-              onClick={() => onSelectVolunteer(selectedVolunteer === v.user_id ? null : v.user_id)}
-            >
-              <div className="volunteer-placer-item-info">
-                <LuGripVertical size={14} className="volunteer-placer-grip" />
-                <div className="volunteer-placer-dot unplaced"></div>
-                <div>
-                  <div className="volunteer-placer-name">{v.full_name || v.user_id}</div>
-                  <div className="volunteer-placer-id">{v.user_id}</div>
-                </div>
-              </div>
-              <button
-                className="btn btn-sm btn-secondary"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSelectVolunteer(v.user_id);
-                }}
+          {unplacedVols.map((v) => {
+            const uid = v.id || v.user_id;
+            return (
+              <div
+                key={uid}
+                draggable={true}
+                onDragStart={(e) => handleDragStart(e, uid)}
+                onDragEnd={handleDragEnd}
+                className={`volunteer-placer-item ${selectedVolunteer === uid ? "selected" : ""} ${draggingId === uid ? "dragging" : ""}`}
+                onClick={() => onSelectVolunteer(selectedVolunteer === uid ? null : uid)}
+                title="Drag onto map or click Place"
               >
-                Place
-              </button>
-            </div>
-          ))}
+                <div className="volunteer-placer-item-info">
+                  <LuGripVertical size={14} className="volunteer-placer-grip" />
+                  <div className="volunteer-placer-dot unplaced"></div>
+                  <div>
+                    <div className="volunteer-placer-name">{v.full_name || uid}</div>
+                    <div className="volunteer-placer-id">{v.email || uid}</div>
+                  </div>
+                </div>
+                <button
+                  className="btn btn-sm btn-secondary"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectVolunteer(uid);
+                  }}
+                >
+                  Place
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -112,19 +137,25 @@ export default function VolunteerPlacer({ eventId, onSelectVolunteer, selectedVo
             <LuCircleCheck size={13} /> Placed ({placedVols.length})
           </div>
           {placedVols.map((v) => {
-            const pos = getPosition(v.user_id);
+            const uid = v.id || v.user_id;
+            const pos = getPosition(uid);
             return (
               <div
-                key={v.user_id}
-                className={`volunteer-placer-item placed ${selectedVolunteer === v.user_id ? "selected" : ""}`}
-                onClick={() => onSelectVolunteer(selectedVolunteer === v.user_id ? null : v.user_id)}
+                key={uid}
+                draggable={true}
+                onDragStart={(e) => handleDragStart(e, uid)}
+                onDragEnd={handleDragEnd}
+                className={`volunteer-placer-item placed ${selectedVolunteer === uid ? "selected" : ""} ${draggingId === uid ? "dragging" : ""}`}
+                onClick={() => onSelectVolunteer(selectedVolunteer === uid ? null : uid)}
+                title="Drag to relocate on map"
               >
                 <div className="volunteer-placer-item-info">
+                  <LuGripVertical size={14} className="volunteer-placer-grip" />
                   <div className="volunteer-placer-dot placed"></div>
                   <div>
-                    <div className="volunteer-placer-name">{v.full_name || v.user_id}</div>
+                    <div className="volunteer-placer-name">{v.full_name || uid}</div>
                     <div className="volunteer-placer-id">
-                      {v.user_id} • Zone {pos?.zone}
+                      {v.email || uid?.slice(0, 8)} • Zone {pos?.zone}
                     </div>
                   </div>
                 </div>
@@ -133,7 +164,7 @@ export default function VolunteerPlacer({ eventId, onSelectVolunteer, selectedVo
                     className="btn btn-sm btn-ghost"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onSelectVolunteer(v.user_id);
+                      onSelectVolunteer(uid);
                     }}
                   >
                     <LuMapPin size={12} /> Relocate
@@ -141,7 +172,7 @@ export default function VolunteerPlacer({ eventId, onSelectVolunteer, selectedVo
                   <button
                     className="btn btn-sm btn-ghost"
                     style={{ color: "var(--error)", padding: "4px 8px" }}
-                    onClick={(e) => handleRemove(e, v.user_id)}
+                    onClick={(e) => handleRemove(e, uid)}
                   >
                     <LuTrash2 size={12} />
                   </button>

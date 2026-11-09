@@ -46,14 +46,14 @@ export default function InviteVolunteer() {
       const asgs = data.assignments || [];
 
       vols.forEach(v => {
-        const isAssigned = asgs.some(a => a.volunteer_user_id === v.user_id);
-        const invite = invs.find(i => i.volunteer_user_id === v.user_id);
+        const isAssigned = asgs.some(a => (a.volunteer_id || a.volunteer_user_id) === v.user_id);
+        const invite = invs.find(i => (i.volunteer_id || i.volunteer_user_id) === v.user_id);
         
         let status = "pending";
         if (isAssigned) status = "accepted";
         else if (invite) status = invite.status;
         // else they might be manually assigned without an invite, consider accepted if assigned.
-        else if (asgs.some(a => a.volunteer_user_id === v.user_id)) status = "accepted";
+        else if (asgs.some(a => (a.volunteer_id || a.volunteer_user_id) === v.user_id)) status = "accepted";
 
         combined.push({
           user_id: v.user_id,
@@ -65,7 +65,8 @@ export default function InviteVolunteer() {
       });
 
       invs.forEach(i => {
-        if (!i.volunteer_user_id && !combined.find(r => r.email === i.volunteer_email)) {
+        const invVolId = i.volunteer_id || i.volunteer_user_id;
+        if (!invVolId && !combined.find(r => r.email === i.volunteer_email)) {
           combined.push({
             user_id: null,
             email: i.volunteer_email,

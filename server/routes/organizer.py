@@ -166,15 +166,15 @@ async def get_operational_health(event_id: str, current_user: dict = Depends(req
 
     # Authoritative direct fallback aggregation
     try:
-        # Incidents
-        incidents_res = supabase.table("operational_incidents").select("id, priority, status, category, created_at, zone_name").eq("event_id", event_id).execute()
+        # Incidents via relational view v_operational_incidents
+        incidents_res = supabase.table("v_operational_incidents").select("id, priority, status, category, created_at, zone_name").eq("event_id", event_id).execute()
         incidents = incidents_res.data or []
         active_incidents = [i for i in incidents if i.get("status") not in ("resolved", "closed")]
         urgent_incidents = [i for i in active_incidents if i.get("priority") in ("urgent", "critical")]
         resolved_incidents = [i for i in incidents if i.get("status") in ("resolved", "closed")]
 
-        # Shifts
-        shifts_res = supabase.table("volunteer_shifts").select("id, status, break_state, zone_id, zone_name").eq("event_id", event_id).execute()
+        # Shifts via relational view v_volunteer_shifts
+        shifts_res = supabase.table("v_volunteer_shifts").select("id, status, break_state, zone_id, zone_name").eq("event_id", event_id).execute()
         shifts = shifts_res.data or []
         active_shifts = [s for s in shifts if s.get("status") == "active"]
         on_break_shifts = [s for s in shifts if s.get("status") == "active" and s.get("break_state") in ("taking_break", "on_break")]
@@ -301,7 +301,7 @@ async def get_operational_timeline(event_id: str, limit: int = Query(50, ge=1, l
 async def list_incidents(event_id: str, status: Optional[str] = None, current_user: dict = Depends(require_organizer)):
     supabase = get_supabase()
     verify_event_ownership(supabase, event_id, current_user["user_id"])
-    query = supabase.table("operational_incidents").select("*").eq("event_id", event_id).order("created_at", desc=True)
+    query = supabase.table("v_operational_incidents").select("*").eq("event_id", event_id).order("created_at", desc=True)
     if status:
         query = query.eq("status", status)
     result = query.execute()
@@ -330,10 +330,15 @@ async def create_incident(data: IncidentCreate, current_user: dict = Depends(req
             "description": data.description or "",
             "category": data.category,
             "priority": data.priority,
-            "venue_zone_name": data.zone_name,
             "status": "reported",
             "reporter_id": current_user.get("id", current_user.get("user_id")),
         }
+        if data.zone_id:
+            new_incident["zone_id"] = data.zone_id
+        elif data.zone_name:
+            z_res = supabase.table("event_zones").select("id").eq("event_id", data.event_id).ilike("name", data.zone_name.strip()).execute()
+            if z_res.data:
+                new_incident["zone_id"] = z_res.data[0]["id"]
         result = supabase.table("operational_incidents").insert(new_incident).execute()
         return {"message": "Incident created", "data": result.data}
 
@@ -373,7 +378,7 @@ async def list_shifts(event_id: str, current_user: dict = Depends(require_organi
     try:
         supabase = get_supabase()
         verify_event_ownership(supabase, event_id, current_user["user_id"])
-        shifts = supabase.table("volunteer_shifts").select("*").eq("event_id", event_id).order("created_at", desc=True).execute()
+        shifts = supabase.table("v_volunteer_shifts").select("*").eq("event_id", event_id).order("created_at", desc=True).execute()
         return {"shifts": shifts.data}
     except Exception as e:
         import traceback
@@ -385,7 +390,7 @@ async def list_shifts(event_id: str, current_user: dict = Depends(require_organi
 async def list_teams(event_id: str, current_user: dict = Depends(require_organizer)):
     supabase = get_supabase()
     verify_event_ownership(supabase, event_id, current_user["user_id"])
-    teams = supabase.table("event_teams").select("*").eq("event_id", event_id).execute()
+    teams = supabase.table("v_event_teams").select("*").eq("event_id", event_id).execute()
     return {"teams": teams.data}
 
 
@@ -393,7 +398,7 @@ async def list_teams(event_id: str, current_user: dict = Depends(require_organiz
 async def list_coverage_requests(event_id: str, current_user: dict = Depends(require_organizer)):
     supabase = get_supabase()
     verify_event_ownership(supabase, event_id, current_user["user_id"])
-    coverage = supabase.table("coverage_requests").select("*").eq("event_id", event_id).order("created_at", desc=True).execute()
+    coverage = supabase.table("v_coverage_requests").select("*").eq("event_id", event_id).order("created_at", desc=True).execute()
     return {"coverage_requests": coverage.data}
 
 
@@ -404,12 +409,31 @@ async def list_event_volunteers(event_id: str, current_user: dict = Depends(requ
         verify_event_ownership(supabase, event_id, current_user["user_id"])
 
         # Canonical assignment table only (web_volunteer_assignments retired)
-        assignments = supabase.table("volunteer_assignments").select("*, volunteer:profiles(id, full_name, avatar_url)").eq("event_id", event_id).execute()
-        shifts = supabase.table("volunteer_shifts").select("*").eq("event_id", event_id).order("scheduled_start").execute()
+        assignments_res = supabase.table("volunteer_assignments").select("*").eq("event_id", event_id).execute()
+        assignments = assignments_res.data or []
+
+        # Enrich with volunteer profiles manually (avoids PostgREST FK relationship cache dependency)
+        vol_ids = list({a["volunteer_id"] for a in assignments if a.get("volunteer_id")})
+        profiles_map = {}
+        if vol_ids:
+            try:
+                prof_res = supabase.table("profiles").select("id, full_name, avatar_url, email").in_("id", vol_ids).execute()
+                profiles_map = {p["id"]: p for p in (prof_res.data or [])}
+            except Exception as pe:
+                print(f"[organizer] Failed to fetch profiles for assignments: {pe}")
+
+        for a in assignments:
+            a["volunteer"] = profiles_map.get(a.get("volunteer_id")) or {
+                "id": a.get("volunteer_id"),
+                "full_name": "Volunteer",
+                "avatar_url": None,
+            }
+
+        shifts = supabase.table("v_volunteer_shifts").select("*").eq("event_id", event_id).order("scheduled_start").execute()
 
         return {
-            "assignments": assignments.data,
-            "shifts": shifts.data,
+            "assignments": assignments,
+            "shifts": shifts.data or [],
         }
     except Exception as e:
         import traceback
@@ -425,7 +449,7 @@ async def list_event_volunteers(event_id: str, current_user: dict = Depends(requ
 async def list_tasks(event_id: str, status: Optional[str] = None, current_user: dict = Depends(require_organizer)):
     supabase = get_supabase()
     verify_event_ownership(supabase, event_id, current_user["user_id"])
-    query = supabase.table("supervisor_tasks").select("*").eq("event_id", event_id).order("created_at", desc=True)
+    query = supabase.table("v_supervisor_tasks").select("*").eq("event_id", event_id).order("created_at", desc=True)
     if status:
         query = query.eq("status", status)
     result = query.execute()
@@ -446,8 +470,10 @@ async def create_task(data: TaskCreate, current_user: dict = Depends(require_org
     }
     if data.zone_id:
         new_task["zone_id"] = data.zone_id
-    if data.zone_name:
-        new_task["zone_name"] = data.zone_name
+    elif data.zone_name:
+        z_res = supabase.table("event_zones").select("id").eq("event_id", data.event_id).ilike("name", data.zone_name.strip()).execute()
+        if z_res.data:
+            new_task["zone_id"] = z_res.data[0]["id"]
     if data.assigned_to:
         new_task["assigned_to"] = data.assigned_to
     
@@ -651,7 +677,7 @@ async def get_crowd_predictions(
 async def list_zones(event_id: str, current_user: dict = Depends(require_organizer)):
     supabase = get_supabase()
     verify_event_ownership(supabase, event_id, current_user["user_id"])
-    result = supabase.table("event_zones").select("*").eq("event_id", event_id).order("sort_order").execute()
+    result = supabase.table("event_zones").select("*").eq("event_id", event_id).order("created_at").execute()
     return {"zones": result.data}
 
 
@@ -672,15 +698,6 @@ async def create_zone(data: ZoneCreate, current_user: dict = Depends(require_org
         new_zone["operating_capacity"] = data.operating_capacity
     
     result = supabase.table("event_zones").insert(new_zone).execute()
-    
-    # Also sync to events.zones text array
-    event = supabase.table("events").select("zones").eq("id", data.event_id).execute()
-    if event.data:
-        current_zones = event.data[0].get("zones") or []
-        if data.name not in current_zones:
-            current_zones.append(data.name)
-            supabase.table("events").update({"zones": current_zones}).eq("id", data.event_id).execute()
-    
     return {"message": "Zone created", "data": result.data}
 
 
@@ -710,16 +727,6 @@ async def delete_zone(zone_id: str, current_user: dict = Depends(require_organiz
     verify_event_ownership(supabase, zone["event_id"], current_user["user_id"])
 
     supabase.table("event_zones").delete().eq("id", zone_id).execute()
-
-    # Remove from events.zones text array too
-    try:
-        event = supabase.table("events").select("zones").eq("id", zone["event_id"]).execute()
-        if event.data:
-            current_zones = [z for z in (event.data[0].get("zones") or []) if z != zone["name"]]
-            supabase.table("events").update({"zones": current_zones}).eq("id", zone["event_id"]).execute()
-    except Exception:
-        pass
-
     return {"message": f"Zone {zone['name']} deleted"}
 
 
@@ -1079,18 +1086,50 @@ class ShiftUpdate(BaseModel):
 async def create_shift(data: ShiftCreate, current_user: dict = Depends(require_organizer)):
     supabase = get_supabase()
     verify_event_ownership(supabase, data.event_id, current_user["user_id"])
+
+    # Ensure volunteer_assignments row exists to satisfy assignment_id FK constraint
+    assign = (
+        supabase.table("volunteer_assignments")
+        .select("id")
+        .eq("event_id", data.event_id)
+        .eq("volunteer_id", data.volunteer_id)
+        .execute()
+    )
+    if not assign.data:
+        as_res = supabase.table("volunteer_assignments").insert({
+            "event_id": data.event_id,
+            "volunteer_id": data.volunteer_id,
+            "status": "active",
+            "role": "crowd_monitor",
+            "zone_id": getattr(data, "zone_id", None)
+        }).execute()
+        assignment_id = as_res.data[0]["id"]
+    else:
+        assignment_id = assign.data[0]["id"]
+
     new_shift = {
         "event_id": data.event_id,
         "volunteer_id": data.volunteer_id,
+        "assignment_id": assignment_id,
         "shift_name": data.shift_name,
         "scheduled_start": data.scheduled_start,
         "scheduled_end": data.scheduled_end,
         "status": "scheduled",
     }
-    for field in ["zone_id", "zone_name", "team_id", "notes"]:
+    for field in ["zone_id", "team_id", "notes"]:
         v = getattr(data, field, None)
         if v:
             new_shift[field] = v
+    if not new_shift.get("zone_id") and getattr(data, "zone_name", None):
+        z_res = supabase.table("event_zones").select("id").eq("event_id", data.event_id).ilike("name", data.zone_name.strip()).execute()
+        if z_res.data:
+            new_shift["zone_id"] = z_res.data[0]["id"]
+
+    if new_shift.get("zone_id"):
+        supabase.table("volunteer_assignments").update({
+            "zone_id": new_shift["zone_id"]
+        }).eq("id", assignment_id).execute()
+
     result = supabase.table("volunteer_shifts").insert(new_shift).execute()
     return {"message": "Shift created", "data": result.data}
 
@@ -1147,10 +1186,14 @@ async def create_team(data: TeamCreate, current_user: dict = Depends(require_org
     supabase = get_supabase()
     verify_event_ownership(supabase, data.event_id, current_user["user_id"])
     new_team = {"event_id": data.event_id, "name": data.name}
-    for field in ["description", "zone_id", "zone_name", "lead_id"]:
+    for field in ["description", "zone_id", "lead_id"]:
         v = getattr(data, field, None)
         if v:
             new_team[field] = v
+    if not new_team.get("zone_id") and getattr(data, "zone_name", None):
+        z_res = supabase.table("event_zones").select("id").eq("event_id", data.event_id).ilike("name", data.zone_name.strip()).execute()
+        if z_res.data:
+            new_team["zone_id"] = z_res.data[0]["id"]
     result = supabase.table("event_teams").insert(new_team).execute()
     return {"message": "Team created", "data": result.data}
 
@@ -1393,7 +1436,7 @@ async def export_csv(event_id: str, report_type: str = Query("attendance"), curr
     verify_event_ownership(supabase, event_id, current_user["user_id"])
 
     if report_type == "incidents":
-        rows = supabase.table("operational_incidents").select(
+        rows = supabase.table("v_operational_incidents").select(
             "id, title, category, priority, status, venue_zone_name, created_at, resolved_at, resolution_notes"
         ).eq("event_id", event_id).order("created_at").execute().data
         fieldnames = ["id", "title", "category", "priority", "status", "venue_zone_name", "created_at", "resolved_at", "resolution_notes"]
@@ -1401,9 +1444,9 @@ async def export_csv(event_id: str, report_type: str = Query("attendance"), curr
     else:
         # Default: attendance
         rows = supabase.table("tickets").select(
-            "id, attendee_id, user_id, ticket_type, status, created_at, claimed_at"
-        ).eq("event_id", event_id).order("created_at").execute().data
-        fieldnames = ["id", "attendee_id", "user_id", "ticket_type", "status", "created_at", "claimed_at"]
+            "id, user_id, ticket_code, status, purchased_at, checked_in_at, claimed_at"
+        ).eq("event_id", event_id).order("purchased_at").execute().data
+        fieldnames = ["id", "user_id", "ticket_code", "status", "purchased_at", "checked_in_at", "claimed_at"]
         filename = f"attendance_{event_id[:8]}.csv"
 
     def generate():

@@ -4,7 +4,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../design_system/design_system.dart';
-import '../../services/attendee_identity.dart';
 import '../../utils/date_formatter.dart';
 import '../../screens/ticket_detail_screen.dart';
 import '../map/map_screen.dart';
@@ -86,10 +85,11 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   Future<void> _checkExistingTicket() async {
-    final attendeeId = AttendeeIdentity.deviceId;
-    if (attendeeId == null) {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
       if (mounted) {
         setState(() {
+          _existingTicket = null;
           _checkingTicket = false;
         });
       }
@@ -99,9 +99,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     try {
       final response = await Supabase.instance.client
           .from('tickets')
-          .select('*, events(*)')
+          .select('*, events(*, venues(*))')
           .eq('event_id', widget.event.id)
-          .eq('attendee_id', attendeeId)
+          .eq('user_id', user.id)
           .maybeSingle();
 
       if (mounted) {
@@ -143,10 +143,10 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
   }
 
   Future<void> _claimTicket() async {
-    final attendeeId = AttendeeIdentity.deviceId;
-    if (attendeeId == null) {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Device ID not initialized. Please try again.')),
+        const SnackBar(content: Text('Please log in to claim a ticket.')),
       );
       return;
     }
@@ -203,10 +203,11 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     });
 
     try {
-      final ticketCode = const Uuid().v4();
+      final shortUuid = const Uuid().v4().substring(0, 8).toUpperCase();
+      final ticketCode = 'SPAT-$shortUuid';
       final insertData = {
         'event_id': widget.event.id,
-        'attendee_id': attendeeId,
+        'user_id': user.id,
         'ticket_code': ticketCode,
         'status': 'purchased',
       };
@@ -215,9 +216,9 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
       final newTicket = await Supabase.instance.client
           .from('tickets')
-          .select('*, events(*)')
+          .select('*, events(*, venues(*))')
           .eq('event_id', widget.event.id)
-          .eq('attendee_id', attendeeId)
+          .eq('user_id', user.id)
           .maybeSingle();
 
       if (!mounted) return;

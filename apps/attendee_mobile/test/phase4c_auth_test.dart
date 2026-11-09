@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:attendee_mobile/features/profile/models/user_profile.dart';
 import 'package:attendee_mobile/features/explore/data/event_cache_manager.dart';
+import 'package:attendee_mobile/features/explore/models/spatially_event.dart';
 import 'package:attendee_mobile/services/auth_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -148,6 +149,36 @@ void main() {
       final intactGuest = await cacheManager.getCachedTickets(userId: null);
       expect(intactGuest.length, 1);
       expect(intactGuest.first['ticket_code'], 'CODE-GUEST');
+    });
+
+    test('SpatiallyEvent parses venue_id, nested venues object, and timezone', () {
+      final json = {
+        'id': '66c8a0ae-eb23-47d7-a0ad-2b304ccbd301',
+        'name': 'Cultural Night 2026',
+        'event_date': '2026-08-30T13:30:00+00:00',
+        'status': 'live',
+        'venue_id': '00000000-0000-0000-0001-000000000001',
+        'timezone': 'Asia/Kolkata',
+        'venues': {
+          'id': '00000000-0000-0000-0001-000000000001',
+          'name': 'FCRCE Campus',
+          'address': 'Bandra (W), Mumbai',
+          'timezone': 'Asia/Kolkata',
+        },
+      };
+
+      final event = SpatiallyEvent.fromJson(json);
+      expect(event.id, '66c8a0ae-eb23-47d7-a0ad-2b304ccbd301');
+      expect(event.name, 'Cultural Night 2026');
+      expect(event.venueId, '00000000-0000-0000-0001-000000000001');
+      expect(event.venue, 'FCRCE Campus');
+      expect(event.locationAddress, 'Bandra (W), Mumbai');
+      expect(event.timezone, 'Asia/Kolkata');
+      expect(event.isLive, isTrue);
+
+      final exported = event.toJson();
+      expect(exported['venue_id'], '00000000-0000-0000-0001-000000000001');
+      expect(exported['timezone'], 'Asia/Kolkata');
     });
   });
 }

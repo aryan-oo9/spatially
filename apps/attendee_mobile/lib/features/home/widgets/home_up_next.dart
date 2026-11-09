@@ -19,10 +19,20 @@ class HomeUpNext extends StatelessWidget {
   });
 
   String get _eventName => (event['name'] as String?) ?? 'Upcoming Event';
-  String get _venue => (event['venue'] as String?) ?? 'Venue TBA';
+  String get _venue {
+    final vo = event['venues'] as Map<String, dynamic>?;
+    if (vo != null && vo['name'] != null && vo['name'].toString().isNotEmpty) {
+      return vo['name'].toString();
+    }
+    final v = event['venue'] as String?;
+    if (v != null && v.isNotEmpty && v != 'TBA') {
+      return v;
+    }
+    return 'Venue TBA';
+  }
 
   String _formatTime() {
-    final dateStr = event['event_date'] as String?;
+    final dateStr = (event['event_start_time'] ?? event['event_date']) as String?;
     if (dateStr == null) return '';
     try {
       final date = DateTime.parse(dateStr).toLocal();
@@ -35,7 +45,7 @@ class HomeUpNext extends StatelessWidget {
   }
 
   String _formatDate() {
-    final dateStr = event['event_date'] as String?;
+    final dateStr = (event['event_start_time'] ?? event['event_date']) as String?;
     if (dateStr == null) return '';
     try {
       final date = DateTime.parse(dateStr).toLocal();

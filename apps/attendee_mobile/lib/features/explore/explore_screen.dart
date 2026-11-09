@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../design_system/design_system.dart';
-import '../../services/attendee_identity.dart';
 import '../../services/offline_service.dart';
 import '../../utils/date_formatter.dart';
 import 'data/event_cache_manager.dart';
@@ -76,9 +75,9 @@ class _ExploreScreenState extends State<ExploreScreen> {
       // 1. Fetch active and upcoming events
       final eventsData = await Supabase.instance.client
           .from('events')
-          .select()
+          .select('*, venues(*)')
           .inFilter('status', ['live', 'upcoming'])
-          .order('event_date', ascending: true)
+          .order('event_start_time', ascending: true)
           .timeout(const Duration(seconds: 4));
 
       final eventsList = (eventsData as List)
@@ -221,13 +220,13 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
     // Refresh tickets in case the user registered inside EventDetailScreen
     if (mounted) {
-      final attendeeId = AttendeeIdentity.deviceId;
-      if (attendeeId != null) {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user != null) {
         try {
           final ticketsData = await Supabase.instance.client
               .from('tickets')
               .select('event_id')
-              .eq('attendee_id', attendeeId);
+              .eq('user_id', user.id);
 
           final updatedIds = <String>{};
           for (final row in ticketsData as List) {

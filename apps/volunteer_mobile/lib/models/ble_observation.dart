@@ -5,6 +5,7 @@ class BleObservation {
   final bool isSpatiallyDevice;
   final String? volunteerId;
   final String? eventId;
+  final String? zoneId;
   final String? zone;
 
   BleObservation({
@@ -14,11 +15,12 @@ class BleObservation {
     this.isSpatiallyDevice = false,
     this.volunteerId,
     this.eventId,
+    this.zoneId,
     this.zone,
   });
 
   Map<String, dynamic> toMap() {
-    return {
+    final map = <String, dynamic>{
       'ephemeral_id': ephemeralId,
       'rssi': rssi,
       'scanned_at': scannedAt.toIso8601String(),
@@ -27,5 +29,9 @@ class BleObservation {
       'event_id': eventId,
       'zone': zone,
     };
+    if (zoneId != null) {
+      map['zone_id'] = zoneId;
+    }
+    return map;
   }
 }

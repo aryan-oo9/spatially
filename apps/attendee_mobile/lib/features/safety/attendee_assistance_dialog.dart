@@ -42,6 +42,8 @@ class _AttendeeAssistanceDialogState extends State<AttendeeAssistanceDialog> {
   final _locationController = TextEditingController();
 
   String _selectedCategory = 'attendee_assistance';
+  String? _selectedZoneId;
+  List<Map<String, dynamic>> _availableZones = [];
   bool _isSubmitting = false;
   String? _errorMessage;
   bool _viewHistory = false;
@@ -52,6 +54,22 @@ class _AttendeeAssistanceDialogState extends State<AttendeeAssistanceDialog> {
   void initState() {
     super.initState();
     _loadHistory();
+    _loadZones();
+  }
+
+  Future<void> _loadZones() async {
+    try {
+      final res = await Supabase.instance.client
+          .from('event_zones')
+          .select('id, name')
+          .eq('event_id', widget.eventId)
+          .order('name');
+      if (mounted) {
+        setState(() {
+          _availableZones = List<Map<String, dynamic>>.from(res as List);
+        });
+      }
+    } catch (_) {}
   }
 
   @override
@@ -94,6 +112,7 @@ class _AttendeeAssistanceDialogState extends State<AttendeeAssistanceDialog> {
 
     try {
       final deviceId = AttendeeIdentity.deviceId;
+      final selectedZone = _availableZones.where((z) => z['id'] == _selectedZoneId).firstOrNull;
       final res = await Supabase.instance.client.rpc(
         'request_attendee_assistance',
         params: {
@@ -101,6 +120,8 @@ class _AttendeeAssistanceDialogState extends State<AttendeeAssistanceDialog> {
           'p_category': _selectedCategory,
           'p_title': _titleController.text.trim(),
           'p_description': _descController.text.trim(),
+          'p_zone_id': _selectedZoneId,
+          'p_venue_zone_name': selectedZone?['name'],
           'p_specific_location': _locationController.text.trim().isNotEmpty
               ? _locationController.text.trim()
               : null,
@@ -295,6 +316,29 @@ class _AttendeeAssistanceDialogState extends State<AttendeeAssistanceDialog> {
               validator: (v) => v == null || v.trim().isEmpty ? 'Please enter details' : null,
             ),
             const SizedBox(height: 16),
+
+            // Zone Picker
+            if (_availableZones.isNotEmpty) ...[
+              const Text('Zone / Hall', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              const SizedBox(height: 6),
+              DropdownButtonFormField<String>(
+                value: _selectedZoneId,
+                decoration: InputDecoration(
+                  hintText: 'Select zone or station',
+                  prefixIcon: const Icon(Icons.location_on_outlined, size: 20),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                ),
+                items: _availableZones.map((z) {
+                  return DropdownMenuItem<String>(
+                    value: z['id']?.toString(),
+                    child: Text(z['name']?.toString() ?? 'Zone', style: const TextStyle(fontSize: 13)),
+                  );
+                }).toList(),
+                onChanged: (val) => setState(() => _selectedZoneId = val),
+              ),
+              const SizedBox(height: 16),
+            ],
 
             // Location
             const Text('Where are you right now?', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),

@@ -70,6 +70,14 @@ class MockVolunteerAssignmentRepository implements VolunteerAssignmentRepository
   }) async {
     return isAssignmentValidResult;
   }
+
+  @override
+  Future<void> assignZone({
+    required String eventId,
+    required String volunteerId,
+    required String zoneId,
+    String? zoneName,
+  }) async {}
 }
 
 class MockTicketCheckInRepository implements TicketCheckInRepository {

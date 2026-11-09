@@ -145,11 +145,15 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
         final ticket = _tickets[ticketIndex];
         final event = ticket['events'] as Map<String, dynamic>?;
         final eventName = event?['name']?.toString() ?? 'Unknown Event';
-        final venue = event?['venue']?.toString() ?? 'TBA';
+        final venueObj = event?['venues'] as Map<String, dynamic>?;
+        final venue = venueObj?['name']?.toString() ??
+            ((event?['venue'] != null && event?['venue'] != 'TBA')
+                ? event!['venue'].toString()
+                : 'TBA');
         final status = (ticket['status']?.toString() ?? 'purchased').toLowerCase();
         final isCheckedIn = status == 'checked_in';
 
-        final dateTimeStr = SpatiallyDateFormatter.formatDateTime(event?['event_date']);
+        final dateTimeStr = SpatiallyDateFormatter.formatDateTime(event?['event_start_time'] ?? event?['event_date']);
 
         return SpatiallyCard(
           hasSubtleGlow: !isCheckedIn,

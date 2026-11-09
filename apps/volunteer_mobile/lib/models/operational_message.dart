@@ -77,6 +77,7 @@ class OperationalMessage {
   final String senderName;
   final OperationalTargetType targetType;
   final String? targetId;
+  final String? targetUserId;
   final String? zoneId;
   final String messageType;
   final OperationalPriority priority;
@@ -101,6 +102,7 @@ class OperationalMessage {
     required this.senderName,
     required this.targetType,
     this.targetId,
+    this.targetUserId,
     this.zoneId,
     required this.messageType,
     required this.priority,
@@ -158,6 +160,9 @@ class OperationalMessage {
       }
     }
 
+    final targetUserId = json['target_user_id'] as String? ?? (json['target_type'] == 'volunteer' ? json['target_id'] as String? : null);
+    final targetId = json['target_id'] as String? ?? targetUserId;
+
     return OperationalMessage(
       id: json['id'] as String,
       eventId: json['event_id'] as String,
@@ -165,7 +170,8 @@ class OperationalMessage {
       senderRole: json['sender_role'] as String? ?? 'volunteer',
       senderName: json['sender_name'] as String? ?? 'Staff',
       targetType: OperationalTargetType.fromString(json['target_type'] as String?),
-      targetId: json['target_id'] as String?,
+      targetId: targetId,
+      targetUserId: targetUserId,
       zoneId: json['zone_id'] as String?,
       messageType: json['message_type'] as String? ?? 'operational',
       priority: OperationalPriority.fromString(json['priority'] as String?),
@@ -192,7 +198,8 @@ class OperationalMessage {
       'sender_role': senderRole,
       'sender_name': senderName,
       'target_type': targetType.value,
-      'target_id': targetId,
+      'target_id': targetId ?? targetUserId,
+      'target_user_id': targetUserId ?? (targetType == OperationalTargetType.volunteer ? targetId : null),
       'zone_id': zoneId,
       'message_type': messageType,
       'priority': priority.value,
@@ -215,6 +222,7 @@ class OperationalMessage {
     String? senderName,
     OperationalTargetType? targetType,
     String? targetId,
+    String? targetUserId,
     String? zoneId,
     String? messageType,
     OperationalPriority? priority,
@@ -235,6 +243,7 @@ class OperationalMessage {
       senderName: senderName ?? this.senderName,
       targetType: targetType ?? this.targetType,
       targetId: targetId ?? this.targetId,
+      targetUserId: targetUserId ?? this.targetUserId,
       zoneId: zoneId ?? this.zoneId,
       messageType: messageType ?? this.messageType,
       priority: priority ?? this.priority,

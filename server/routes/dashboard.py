@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from config import get_supabase
 from middleware.auth import get_current_user, require_organizer
+from routes.events import synthesize_event_compat
 
 router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"])
 
@@ -13,33 +14,35 @@ async def user_dashboard(current_user: dict = Depends(get_current_user)):
     supabase = get_supabase()
 
     registrations = (
-        supabase.table("user_event_registrations")
+        supabase.table("tickets")
         .select("event_id")
         .eq("user_id", current_user["user_id"])
-        .eq("status", "registered")
+        .in_("status", ["valid", "checked_in"])
         .execute()
     )
 
-    registered_ids = [r["event_id"] for r in registrations.data]
+    registered_ids = list(set([r["event_id"] for r in registrations.data]))
 
     registered_events = []
     if registered_ids:
-        registered_events = (
+        registered_res = (
             supabase.table("events")
-            .select("*")
+            .select("*, venues(*)")
             .in_("id", registered_ids)
-            .order("event_date", desc=False)
+            .order("event_start_time", desc=False)
             .execute()
-        ).data
+        )
+        registered_events = [synthesize_event_compat(e) for e in (registered_res.data or [])]
 
     upcoming_events = (
         supabase.table("events")
-        .select("*")
+        .select("*, venues(*)")
         .in_("status", ["upcoming", "live"])
-        .order("event_date", desc=False)
+        .order("event_start_time", desc=False)
         .limit(10)
         .execute()
     )
+    upcoming_data = [synthesize_event_compat(e) for e in (upcoming_events.data or [])]
 
     live_count = sum(1 for e in registered_events if e.get("status") == "live")
     upcoming_count = sum(1 for e in registered_events if e.get("status") == "upcoming")
@@ -51,7 +54,7 @@ async def user_dashboard(current_user: dict = Depends(get_current_user)):
             "upcoming_events": upcoming_count,
         },
         "registered_events": registered_events,
-        "upcoming_events": upcoming_events.data,
+        "upcoming_events": upcoming_data,
     }
 
 
@@ -73,18 +76,19 @@ async def volunteer_dashboard(current_user: dict = Depends(get_current_user)):
 
     assigned_events = []
     if assigned_ids:
-        assigned_events = (
+        assigned_res = (
             supabase.table("events")
-            .select("*")
+            .select("*, venues(*)")
             .in_("id", assigned_ids)
-            .order("event_date", desc=False)
+            .order("event_start_time", desc=False)
             .execute()
-        ).data
+        )
+        assigned_events = [synthesize_event_compat(e) for e in (assigned_res.data or [])]
 
     pending_invitations = (
         supabase.table("event_invitations")
         .select("*")
-        .eq("volunteer_user_id", current_user["user_id"])
+        .eq("volunteer_id", current_user["user_id"])
         .eq("status", "pending")
         .execute()
     )
@@ -122,13 +126,13 @@ async def organizer_dashboard(current_user: dict = Depends(require_organizer)):
 
     my_events = (
         supabase.table("events")
-        .select("*")
+        .select("*, venues(*)")
         .eq("organizer_id", current_user["user_id"])
-        .order("event_date", desc=False)
+        .order("event_start_time", desc=False)
         .execute()
     )
-
-    event_ids = [e["id"] for e in my_events.data]
+    events_data = [synthesize_event_compat(e) for e in (my_events.data or [])]
+    event_ids = [e["id"] for e in events_data]
 
     total_tickets = 0
     total_checkins = 0
@@ -169,24 +173,24 @@ async def organizer_dashboard(current_user: dict = Depends(require_organizer)):
         )
         total_observations += obs.count or 0
 
-    live_events = [e for e in my_events.data if e.get("status") == "live"]
-    upcoming_events = [e for e in my_events.data if e.get("status") == "upcoming"]
-    ended_events = [e for e in my_events.data if e.get("status") == "ended"]
+    live_events = [e for e in events_data if e.get("status") == "live"]
+    upcoming_events = [e for e in events_data if e.get("status") == "upcoming"]
+    ended_events = [e for e in events_data if e.get("status") == "ended"]
 
     user_registrations = []
     for eid in event_ids:
         regs = (
-            supabase.table("user_event_registrations")
-            .select("*", count="exact")
+            supabase.table("tickets")
+            .select("id", count="exact")
             .eq("event_id", eid)
-            .eq("status", "registered")
+            .in_("status", ["valid", "checked_in"])
             .execute()
         )
         user_registrations.append({"event_id": eid, "count": regs.count or 0})
 
     return {
         "stats": {
-            "total_events": len(my_events.data),
+            "total_events": len(events_data),
             "live_events": len(live_events),
             "upcoming_events": len(upcoming_events),
             "ended_events": len(ended_events),
@@ -195,7 +199,7 @@ async def organizer_dashboard(current_user: dict = Depends(require_organizer)):
             "total_volunteers": total_volunteers,
             "total_observations": total_observations,
         },
-        "events": my_events.data,
+        "events": events_data,
         "user_registrations": user_registrations,
     }
 
@@ -204,7 +208,7 @@ async def organizer_dashboard(current_user: dict = Depends(require_organizer)):
 async def get_crowd_data(event_id: str, current_user: dict = Depends(get_current_user)):
     supabase = get_supabase()
 
-    event = supabase.table("events").select("zones").eq("id", event_id).execute()
+    event = supabase.table("events").select("id, name").eq("id", event_id).execute()
     if not event.data:
         raise HTTPException(status_code=404, detail="Event not found")
 
@@ -215,7 +219,9 @@ async def get_crowd_data(event_id: str, current_user: dict = Depends(get_current
         .execute()
     )
 
-    zones = event.data[0].get("zones", [])
+    zones_res = supabase.table("event_zones").select("name").eq("event_id", event_id).order("created_at").execute()
+    zones = [z["name"] for z in (zones_res.data or [])]
+
     zone_data = {}
     for zone in zones:
         zone_counts = [c for c in counts.data if c.get("zone") == zone]

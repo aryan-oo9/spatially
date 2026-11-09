@@ -4,6 +4,7 @@ from models import InviteByIdRequest, InviteByEmailRequest, InviteBulkRequest
 from config import get_supabase
 from middleware.auth import require_organizer, get_current_user
 from services.email import send_volunteer_invitation_email
+from routes.events import synthesize_event_compat
 
 router = APIRouter(prefix="/api/volunteers", tags=["Volunteers"])
 
@@ -18,7 +19,7 @@ async def invite_bulk_volunteers(
     if not event.data:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    if event.data[0].get("organizer_id") != current_user["user_id"]:
+    if str(event.data[0].get("organizer_id")) != str(current_user["user_id"]):
         raise HTTPException(status_code=403, detail="You can only invite volunteers to your own events")
 
     results = {"success": [], "failed": []}
@@ -29,7 +30,6 @@ async def invite_bulk_volunteers(
                 supabase.table("profiles")
                 .select("id, email, full_name")
                 .eq("id", vid)
-                .eq("role", "volunteer")
                 .execute()
             )
 
@@ -40,7 +40,7 @@ async def invite_bulk_volunteers(
             existing_invite = (
                 supabase.table("event_invitations")
                 .select("id, status")
-                .eq("volunteer_user_id", vid)
+                .eq("volunteer_id", vid)
                 .eq("event_id", data.event_id)
                 .execute()
             )
@@ -63,8 +63,8 @@ async def invite_bulk_volunteers(
             supabase.table("event_invitations").insert(
                 {
                     "event_id": data.event_id,
-                    "volunteer_email": volunteer.data[0]["email"],
-                    "volunteer_user_id": vid,
+                    "volunteer_email": volunteer.data[0].get("email") or "",
+                    "volunteer_id": vid,
                     "status": "pending",
                     "invited_by": current_user["user_id"],
                 }
@@ -75,12 +75,15 @@ async def invite_bulk_volunteers(
             results["failed"].append({"id": vid, "reason": str(e)})
 
     if results["success"]:
-        supabase.table("event_activity_logs").insert({
-            "event_id": data.event_id,
-            "action_type": "invite",
-            "description": f"Invited {len(results['success'])} volunteers",
-            "actor_id": current_user["user_id"]
-        }).execute()
+        try:
+            supabase.table("event_activity_logs").insert({
+                "event_id": data.event_id,
+                "action_type": "invite",
+                "description": f"Invited {len(results['success'])} volunteers",
+                "actor_id": current_user["user_id"]
+            }).execute()
+        except Exception:
+            pass
 
     return {
         "message": f"Successfully assigned {len(results['success'])} volunteers. {len(results['failed'])} failed.",
@@ -112,13 +115,13 @@ async def invite_existing_volunteer(
     if not event.data:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    if event.data[0].get("organizer_id") != current_user["user_id"]:
+    if str(event.data[0].get("organizer_id")) != str(current_user["user_id"]):
         raise HTTPException(status_code=403, detail="You can only invite volunteers to your own events")
 
     existing_invite = (
         supabase.table("event_invitations")
         .select("id, status")
-        .eq("volunteer_user_id", data.volunteer_id)
+        .eq("volunteer_id", data.volunteer_id)
         .eq("event_id", data.event_id)
         .execute()
     )
@@ -151,8 +154,8 @@ async def invite_existing_volunteer(
     supabase.table("event_invitations").insert(
         {
             "event_id": data.event_id,
-            "volunteer_email": volunteer.data[0]["email"],
-            "volunteer_user_id": data.volunteer_id,
+            "volunteer_email": volunteer.data[0].get("email") or "",
+            "volunteer_id": data.volunteer_id,
             "status": "pending",
             "invited_by": current_user["user_id"],
         }
@@ -205,7 +208,7 @@ async def invite_new_volunteer(
     if not event.data:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    if event.data[0].get("organizer_id") != current_user["user_id"]:
+    if str(event.data[0].get("organizer_id")) != str(current_user["user_id"]):
         raise HTTPException(status_code=403, detail="You can only invite volunteers to your own events")
 
     existing_invite = (
@@ -295,12 +298,15 @@ async def get_event_volunteers(
     )
 
     volunteer_ids = set()
-    for a in assignments.data:
+    for a in (assignments.data or []):
         if a.get("volunteer_id"):
             volunteer_ids.add(a["volunteer_id"])
-    for i in invitations.data:
-        if i.get("volunteer_user_id"):
-            volunteer_ids.add(i["volunteer_user_id"])
+    for i in (invitations.data or []):
+        vid = i.get("volunteer_id") or i.get("volunteer_user_id")
+        if vid:
+            volunteer_ids.add(vid)
+            i["volunteer_user_id"] = vid
+            i["volunteer_id"] = vid
 
     volunteers = []
     if volunteer_ids:
@@ -310,7 +316,7 @@ async def get_event_volunteers(
             .in_("id", list(volunteer_ids))
             .execute()
         )
-        volunteers = vols.data
+        volunteers = [{**p, "user_id": p["id"]} for p in (vols.data or [])]
 
     return {
         "volunteers": volunteers,
@@ -329,7 +335,7 @@ async def get_my_invitations(current_user: dict = Depends(get_current_user)):
     invitations = (
         supabase.table("event_invitations")
         .select("*")
-        .eq("volunteer_user_id", current_user["user_id"])
+        .eq("volunteer_id", current_user["user_id"])
         .eq("status", "pending")
         .execute()
     )
@@ -340,12 +346,12 @@ async def get_my_invitations(current_user: dict = Depends(get_current_user)):
     event_ids = [inv["event_id"] for inv in invitations.data]
     events = (
         supabase.table("events")
-        .select("*")
+        .select("*, venues(*)")
         .in_("id", event_ids)
         .execute()
     )
 
-    events_map = {e["id"]: e for e in events.data}
+    events_map = {e["id"]: synthesize_event_compat(e) for e in (events.data or [])}
     enriched = []
     for inv in invitations.data:
         inv["event"] = events_map.get(inv["event_id"])
@@ -367,7 +373,7 @@ async def accept_invitation(
         supabase.table("event_invitations")
         .select("*")
         .eq("id", invitation_id)
-        .eq("volunteer_user_id", current_user["user_id"])
+        .eq("volunteer_id", current_user["user_id"])
         .eq("status", "pending")
         .execute()
     )
@@ -419,7 +425,7 @@ async def decline_invitation(
 
     supabase.table("event_invitations").update({"status": "declined"}).eq(
         "id", invitation_id
-    ).eq("volunteer_user_id", current_user["user_id"]).execute()
+    ).eq("volunteer_id", current_user["user_id"]).execute()
 
     return {"message": "Invitation declined"}
 

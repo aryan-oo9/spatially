@@ -142,14 +142,12 @@ def resolve_or_create_event(
         new_event = {
             "name": event_title,
             "status": "live",
-            "event_date": now.isoformat(),
-            "start_time": (now - timedelta(hours=1)).strftime("%H:%M"),
-            "end_time": (now + timedelta(hours=8)).strftime("%H:%M"),
-            "venue": "Convention Grand Arena",
-            "location_address": "Tech District, Pavilion 1-4",
+            "event_start_time": (now - timedelta(hours=1)).isoformat(),
+            "event_end_time": (now + timedelta(hours=8)).isoformat(),
+            "venue_id": "00000000-0000-0000-0001-000000000001",
             "organizer_id": org_id,
-            "organizer_name": org_name,
             "capacity": 800,
+            "timezone": "Asia/Kolkata",
             "description": f"Official live demonstration showcase for judges review. Managed by {org_name}."
         }
         try:
@@ -185,14 +183,12 @@ def resolve_or_create_event(
         new_event = {
             "name": target_event_name.strip(),
             "status": "live",
-            "event_date": now.isoformat(),
-            "start_time": (now - timedelta(hours=1)).strftime("%H:%M"),
-            "end_time": (now + timedelta(hours=8)).strftime("%H:%M"),
-            "venue": "Convention Grand Arena",
-            "location_address": "Convention Center, Hall 1",
+            "event_start_time": (now - timedelta(hours=1)).isoformat(),
+            "event_end_time": (now + timedelta(hours=8)).isoformat(),
+            "venue_id": "00000000-0000-0000-0001-000000000001",
             "organizer_id": org_id,
-            "organizer_name": org_name,
             "capacity": 800,
+            "timezone": "Asia/Kolkata",
             "description": f"Live demonstration showcase: {target_event_name.strip()}."
         }
         created = supabase.table("events").insert(new_event).execute()
@@ -214,11 +210,11 @@ def resolve_or_create_event(
     new_event = {
         "name": "National Tech Summit 2026 - Live Showcase",
         "status": "live",
-        "event_date": now.isoformat(),
-        "start_time": (now - timedelta(hours=1)).strftime("%H:%M"),
-        "end_time": (now + timedelta(hours=8)).strftime("%H:%M"),
-        "venue": "Convention Grand Arena",
-        "location_address": "Convention Center - Grand Hall",
+        "event_start_time": (now - timedelta(hours=1)).isoformat(),
+        "event_end_time": (now + timedelta(hours=8)).isoformat(),
+        "venue_id": "00000000-0000-0000-0001-000000000001",
+        "capacity": 800,
+        "timezone": "Asia/Kolkata",
         "description": "Live production demonstration environment for Spatially judges review."
     }
     created = supabase.table("events").insert(new_event).execute()

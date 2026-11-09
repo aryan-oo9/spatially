@@ -54,8 +54,8 @@ class TeamShiftRepository {
     try {
       final client = Supabase.instance.client;
       final response = await client
-          .from('volunteer_shifts')
-          .select('*, event_teams(*)')
+          .from('v_volunteer_shifts')
+          .select()
           .eq('event_id', eventId)
           .eq('volunteer_id', volunteerId)
           .order('scheduled_start', ascending: true);
@@ -252,7 +252,7 @@ class TeamShiftRepository {
     try {
       final client = Supabase.instance.client;
       final response = await client
-          .from('coverage_requests')
+          .from('v_coverage_requests')
           .select()
           .eq('event_id', eventId)
           .order('created_at', ascending: false);
@@ -332,7 +332,7 @@ class TeamShiftRepository {
     try {
       final client = Supabase.instance.client;
       var query = client
-          .from('supervisor_tasks')
+          .from('v_supervisor_tasks')
           .select()
           .eq('event_id', eventId);
 

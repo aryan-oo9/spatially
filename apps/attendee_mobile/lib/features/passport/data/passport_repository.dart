@@ -41,31 +41,25 @@ class PassportRepositoryImpl implements PassportRepository {
   @override
   Future<List<EventHistoryItem>> getEventHistory(String attendeeId) async {
     final user = _supabase.auth.currentUser;
+    if (user == null) return [];
+
     try {
-      List<dynamic> response;
-      if (user != null) {
-        response = await _supabase
-            .from('tickets')
-            .select('*, events(*)')
-            .eq('user_id', user.id)
-            .order('purchased_at', ascending: false)
-            .timeout(const Duration(seconds: 5));
-      } else {
-        response = await _supabase
-            .from('tickets')
-            .select('*, events(*)')
-            .eq('attendee_id', attendeeId)
-            .isFilter('user_id', null)
-            .order('purchased_at', ascending: false)
-            .timeout(const Duration(seconds: 5));
-      }
+      final response = await _supabase
+          .from('tickets')
+          .select('*, events(*, venues(*))')
+          .eq('user_id', user.id)
+          .order('purchased_at', ascending: false)
+          .timeout(const Duration(seconds: 5));
 
       final items = <EventHistoryItem>[];
       for (final row in response) {
         final eventMap = row['events'] as Map<String, dynamic>?;
         if (eventMap == null) continue;
 
-        final rawDate = eventMap['event_date'];
+        final venueObj = eventMap['venues'] as Map<String, dynamic>?;
+        final venueName = eventMap['venue']?.toString() ?? venueObj?['name']?.toString() ?? 'Venue TBA';
+
+        final rawDate = eventMap['event_start_time'] ?? eventMap['event_date'];
         DateTime parsedDate;
         if (rawDate is String) {
           parsedDate = DateTime.tryParse(rawDate)?.toLocal() ?? DateTime.now();
@@ -88,7 +82,7 @@ class PassportRepositoryImpl implements PassportRepository {
             eventId: eventMap['id']?.toString() ?? '',
             ticketId: row['id']?.toString() ?? '',
             eventName: eventMap['name']?.toString() ?? 'Unnamed Event',
-            venue: eventMap['venue']?.toString() ?? 'Venue TBA',
+            venue: venueName,
             eventDate: parsedDate,
             ticketStatus: ticketStatus,
             ticketCode: row['ticket_code']?.toString() ?? '',
@@ -110,25 +104,24 @@ class PassportRepositoryImpl implements PassportRepository {
       // 1. If a specific eventId is provided, query that ticket
       if (eventId != null && eventId.isNotEmpty) {
         final user = _supabase.auth.currentUser;
-        final dynamic baseQuery = _supabase
-            .from('tickets')
-            .select('*, events(*)')
-            .eq('event_id', eventId);
+        if (user == null) return await _getCachedFallbackContext(eventId);
 
-        final Map<String, dynamic>? row;
-        if (user != null) {
-          row = await baseQuery.eq('user_id', user.id).maybeSingle();
-        } else {
-          row = await baseQuery.eq('attendee_id', attendeeId).isFilter('user_id', null).maybeSingle();
-        }
+        final Map<String, dynamic>? row = await _supabase
+            .from('tickets')
+            .select('*, events(*, venues(*))')
+            .eq('event_id', eventId)
+            .eq('user_id', user.id)
+            .maybeSingle();
 
         if (row != null && row['events'] != null) {
           final e = row['events'] as Map<String, dynamic>;
-          final parsedDate = DateTime.tryParse(e['event_date']?.toString() ?? '')?.toLocal() ?? DateTime.now();
+          final venueObj = e['venues'] as Map<String, dynamic>?;
+          final venueName = e['venue']?.toString() ?? venueObj?['name']?.toString() ?? 'Venue TBA';
+          final parsedDate = DateTime.tryParse((e['event_start_time'] ?? e['event_date'])?.toString() ?? '')?.toLocal() ?? DateTime.now();
           return PassportEventContext(
             eventId: e['id']?.toString() ?? eventId,
             eventName: e['name']?.toString() ?? 'Event',
-            venue: e['venue']?.toString() ?? 'Venue TBA',
+            venue: venueName,
             eventDate: parsedDate,
             ticketStatus: (row['status']?.toString() ?? 'purchased').toLowerCase(),
             ticketCode: row['ticket_code']?.toString(),
@@ -158,18 +151,20 @@ class PassportRepositoryImpl implements PassportRepository {
       // 3. Fallback: if no ticket exists, query latest live/upcoming event as general context
       final eventRows = await _supabase
           .from('events')
-          .select()
+          .select('*, venues(*)')
           .inFilter('status', ['live', 'upcoming'])
-          .order('event_date', ascending: true)
+          .order('event_start_time', ascending: true)
           .limit(1);
 
       if (eventRows.isNotEmpty) {
         final e = eventRows.first;
-        final parsedDate = DateTime.tryParse(e['event_date']?.toString() ?? '')?.toLocal() ?? DateTime.now();
+        final venueObj = e['venues'] as Map<String, dynamic>?;
+        final venueName = venueObj?['name']?.toString() ?? e['venue']?.toString() ?? 'Venue TBA';
+        final parsedDate = DateTime.tryParse((e['event_start_time'] ?? e['event_date'])?.toString() ?? '')?.toLocal() ?? DateTime.now();
         return PassportEventContext(
           eventId: e['id']?.toString() ?? '',
           eventName: e['name']?.toString() ?? 'Event',
-          venue: e['venue']?.toString() ?? 'Venue TBA',
+          venue: venueName,
           eventDate: parsedDate,
           ticketStatus: 'none',
           isLive: (e['status']?.toString() ?? '').toLowerCase() == 'live',
@@ -188,7 +183,7 @@ class PassportRepositoryImpl implements PassportRepository {
 
     if (cachedTicket != null && cachedTicket['events'] != null) {
       final e = cachedTicket['events'] as Map<String, dynamic>;
-      final parsedDate = DateTime.tryParse(e['event_date']?.toString() ?? '')?.toLocal() ?? DateTime.now();
+      final parsedDate = DateTime.tryParse((e['event_start_time'] ?? e['event_date'])?.toString() ?? '')?.toLocal() ?? DateTime.now();
       return PassportEventContext(
         eventId: e['id']?.toString() ?? (eventId ?? ''),
         eventName: e['name']?.toString() ?? 'Event',
@@ -199,7 +194,7 @@ class PassportRepositoryImpl implements PassportRepository {
         isLive: (e['status']?.toString() ?? '').toLowerCase() == 'live',
       );
     } else if (cachedEvent != null) {
-      final parsedDate = DateTime.tryParse(cachedEvent['event_date']?.toString() ?? '')?.toLocal() ?? DateTime.now();
+      final parsedDate = DateTime.tryParse((cachedEvent['event_start_time'] ?? cachedEvent['event_date'])?.toString() ?? '')?.toLocal() ?? DateTime.now();
       return PassportEventContext(
         eventId: cachedEvent['id']?.toString() ?? (eventId ?? ''),
         eventName: cachedEvent['name']?.toString() ?? 'Event',

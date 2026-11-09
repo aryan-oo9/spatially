@@ -169,6 +169,7 @@ class LostFoundRepositoryImpl implements LostFoundRepository {
 
     if (isOnline) {
       try {
+        final isUuid = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(venueZoneId);
         final payload = {
           'event_id': eventId,
           'reporter_device_id': myDeviceId,
@@ -177,6 +178,7 @@ class LostFoundRepositoryImpl implements LostFoundRepository {
           'category': category.name,
           'title': title,
           'description': description,
+          'zone_id': isUuid ? venueZoneId : null,
           'venue_zone_name': venueZoneName,
           'specific_location': specificLocation,
           'image_url': imagePlaceholderName,
