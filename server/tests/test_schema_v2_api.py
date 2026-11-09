@@ -50,15 +50,25 @@ def test_organizer_mine_endpoint():
     finally:
         app.dependency_overrides.clear()
 
+def _get_active_event():
+    from config import get_supabase
+    sb = get_supabase()
+    res = sb.table("events").select("id, organizer_id").limit(1).execute()
+    if res.data:
+        return res.data[0]["id"], res.data[0].get("organizer_id") or "dc0feb1a-aab8-448a-80ec-ad2eeb0ae747"
+    return "9dbc346e-86fd-416b-99d0-3b102b79eacc", "dc0feb1a-aab8-448a-80ec-ad2eeb0ae747"
+
+
 def test_get_event_detail_endpoint():
     from routes.events import get_current_user
+    event_id, org_id = _get_active_event()
     app.dependency_overrides[get_current_user] = lambda: {
-        "user_id": "dc0feb1a-aab8-448a-80ec-ad2eeb0ae747",
+        "user_id": org_id,
         "user_type": "organizer",
         "email": "organizer@test.com",
     }
     try:
-        response = client.get("/api/events/ba3219b7-7320-4318-98df-93bd9c0ac305")
+        response = client.get(f"/api/events/{event_id}")
         assert response.status_code == 200
         data = response.json()
         assert "event" in data
@@ -69,12 +79,12 @@ def test_get_event_detail_endpoint():
 
 def test_venue_map_endpoints():
     from routes.events import get_current_user
+    event_id, org_id = _get_active_event()
     app.dependency_overrides[get_current_user] = lambda: {
-        "user_id": "dc0feb1a-aab8-448a-80ec-ad2eeb0ae747",
+        "user_id": org_id,
         "user_type": "organizer",
         "email": "organizer@test.com",
     }
-    event_id = "ba3219b7-7320-4318-98df-93bd9c0ac305"
     try:
         # Density
         r_density = client.get(f"/api/venue-map/{event_id}/density")
@@ -97,14 +107,14 @@ def test_venue_map_endpoints():
 def test_organizer_volunteers_endpoint():
     from routes.events import get_current_user
     from middleware.auth import require_organizer
+    event_id, org_id = _get_active_event()
     mock_user = {
-        "user_id": "dc0feb1a-aab8-448a-80ec-ad2eeb0ae747",
+        "user_id": org_id,
         "user_type": "organizer",
         "email": "organizer@test.com",
     }
     app.dependency_overrides[get_current_user] = lambda: mock_user
     app.dependency_overrides[require_organizer] = lambda: mock_user
-    event_id = "ba3219b7-7320-4318-98df-93bd9c0ac305"
     try:
         r = client.get(f"/api/organizer/volunteers/{event_id}")
         assert r.status_code == 200

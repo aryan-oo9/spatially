@@ -107,37 +107,20 @@ export default function OrganizerAnalytics() {
     }
   };
 
-  // Synthetic charts dataset based on health and telemetry
-  const attendanceVelocityData = [
-    { hour: "08:00", checkins: 12, cumulative: 12 },
-    { hour: "09:00", checkins: 45, cumulative: 57 },
-    { hour: "10:00", checkins: 110, cumulative: 167 },
-    { hour: "11:00", checkins: 180, cumulative: 347 },
-    { hour: "12:00", checkins: 140, cumulative: 487 },
-    { hour: "13:00", checkins: 95, cumulative: 582 },
-    { hour: "14:00", checkins: 130, cumulative: 712 },
-    { hour: "15:00", checkins: 85, cumulative: 797 },
-  ];
+  // Real DB-calculated charts dataset
+  const attendanceVelocityData = analytics?.attendance_velocity || [];
 
-  const zoneFootfallData = (health?.zones && health.zones.length > 0)
-    ? health.zones.map(z => ({
-        zone: z.zone_name,
-        current: z.active_count || 0,
-        capacity: z.operating_capacity || 100,
-      }))
-    : [
-        { zone: "Main Stage", current: 320, capacity: 400 },
-        { zone: "Expo Hall", current: 210, capacity: 300 },
-        { zone: "Food Court", current: 180, capacity: 200 },
-        { zone: "VIP Lounge", current: 45, capacity: 80 },
-      ];
+  const zoneFootfallData = (analytics?.zone_footfall && analytics.zone_footfall.length > 0)
+    ? analytics.zone_footfall
+    : ((health?.zones && health.zones.length > 0)
+        ? health.zones.map(z => ({
+            zone: z.zone_name,
+            current: z.active_count || 0,
+            capacity: z.operating_capacity || z.capacity_limit || 0,
+          }))
+        : []);
 
-  const incidentResolutionData = [
-    { category: "Medical", mtta: 1.8, mttr: 12.4 },
-    { category: "Security", mtta: 2.5, mttr: 18.0 },
-    { category: "Crowd", mtta: 3.1, mttr: 15.5 },
-    { category: "Facility", mtta: 5.2, mttr: 28.0 },
-  ];
+  const incidentResolutionData = analytics?.incident_resolution || [];
 
   return (
     <div className="fade-in">
@@ -244,21 +227,29 @@ export default function OrganizerAnalytics() {
                 <span className="badge info" style={{ fontSize: "0.75rem" }}>Turnout Velocity</span>
               </div>
               <div style={{ width: "100%", height: 260 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={attendanceVelocityData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="velocityGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#38BDF8" stopOpacity={0.4} />
-                        <stop offset="95%" stopColor="#38BDF8" stopOpacity={0.0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                    <XAxis dataKey="hour" stroke="var(--text-muted)" fontSize={11} tickLine={false} />
-                    <YAxis stroke="var(--text-muted)" fontSize={11} tickLine={false} />
-                    <Tooltip contentStyle={{ backgroundColor: "#0F172A", borderColor: "rgba(255,255,255,0.1)", borderRadius: "8px", fontSize: "0.8rem" }} />
-                    <Area type="monotone" dataKey="cumulative" stroke="#38BDF8" strokeWidth={2} fillOpacity={1} fill="url(#velocityGrad)" name="Total Attendee Turnout" />
-                  </AreaChart>
-                </ResponsiveContainer>
+                {attendanceVelocityData.length === 0 ? (
+                  <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", gap: "8px", textAlign: "center", padding: "16px" }}>
+                    <LuTicket size={32} style={{ opacity: 0.35 }} />
+                    <div style={{ fontSize: "0.9rem", fontWeight: "600" }}>No check-in telemetry yet</div>
+                    <div style={{ fontSize: "0.75rem", opacity: 0.7 }}>Turnout velocity will render in real-time as tickets are checked in.</div>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={attendanceVelocityData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="velocityGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#38BDF8" stopOpacity={0.4} />
+                          <stop offset="95%" stopColor="#38BDF8" stopOpacity={0.0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                      <XAxis dataKey="hour" stroke="var(--text-muted)" fontSize={11} tickLine={false} />
+                      <YAxis stroke="var(--text-muted)" fontSize={11} tickLine={false} />
+                      <Tooltip contentStyle={{ backgroundColor: "#0F172A", borderColor: "rgba(255,255,255,0.1)", borderRadius: "8px", fontSize: "0.8rem" }} />
+                      <Area type="monotone" dataKey="cumulative" stroke="#38BDF8" strokeWidth={2} fillOpacity={1} fill="url(#velocityGrad)" name="Total Attendee Turnout" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </div>
 
@@ -271,17 +262,25 @@ export default function OrganizerAnalytics() {
                 <span className="badge warning" style={{ fontSize: "0.75rem" }}>Telemetry Comparison</span>
               </div>
               <div style={{ width: "100%", height: 260 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={zoneFootfallData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                    <XAxis dataKey="zone" stroke="var(--text-muted)" fontSize={11} tickLine={false} />
-                    <YAxis stroke="var(--text-muted)" fontSize={11} tickLine={false} />
-                    <Tooltip contentStyle={{ backgroundColor: "#0F172A", borderColor: "rgba(255,255,255,0.1)", borderRadius: "8px", fontSize: "0.8rem" }} />
-                    <Legend wrapperStyle={{ fontSize: "0.75rem", paddingTop: "8px" }} />
-                    <Bar dataKey="current" fill="#0EA5E9" name="Detected Count" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="capacity" fill="rgba(255,255,255,0.15)" name="Operating Limit" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                {zoneFootfallData.length === 0 ? (
+                  <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", gap: "8px", textAlign: "center", padding: "16px" }}>
+                    <LuLayers size={32} style={{ opacity: 0.35 }} />
+                    <div style={{ fontSize: "0.9rem", fontWeight: "600" }}>No zones configured</div>
+                    <div style={{ fontSize: "0.75rem", opacity: 0.7 }}>Add zones in Zone Capacity Editor to see footfall comparisons.</div>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={zoneFootfallData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                      <XAxis dataKey="zone" stroke="var(--text-muted)" fontSize={11} tickLine={false} />
+                      <YAxis stroke="var(--text-muted)" fontSize={11} tickLine={false} />
+                      <Tooltip contentStyle={{ backgroundColor: "#0F172A", borderColor: "rgba(255,255,255,0.1)", borderRadius: "8px", fontSize: "0.8rem" }} />
+                      <Legend wrapperStyle={{ fontSize: "0.75rem", paddingTop: "8px" }} />
+                      <Bar dataKey="current" fill="#0EA5E9" name="Detected Count" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="capacity" fill="rgba(255,255,255,0.15)" name="Operating Limit" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </div>
 
@@ -296,17 +295,25 @@ export default function OrganizerAnalytics() {
               <span className="badge error" style={{ fontSize: "0.75rem" }}>Response SLA</span>
             </div>
             <div style={{ width: "100%", height: 220 }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={incidentResolutionData} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                  <XAxis dataKey="category" stroke="var(--text-muted)" fontSize={11} tickLine={false} />
-                  <YAxis stroke="var(--text-muted)" fontSize={11} tickLine={false} unit="m" />
-                  <Tooltip contentStyle={{ backgroundColor: "#0F172A", borderColor: "rgba(255,255,255,0.1)", borderRadius: "8px", fontSize: "0.8rem" }} />
-                  <Legend wrapperStyle={{ fontSize: "0.75rem", paddingTop: "8px" }} />
-                  <Bar dataKey="mtta" fill="#F59E0B" name="MTTA (Time to Acknowledge / Dispatch)" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="mttr" fill="#EF4444" name="MTTR (Time to Resolve)" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              {incidentResolutionData.length === 0 ? (
+                <div style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", gap: "8px", textAlign: "center", padding: "16px" }}>
+                  <LuClock size={32} style={{ opacity: 0.35 }} />
+                  <div style={{ fontSize: "0.9rem", fontWeight: "600" }}>No incidents logged</div>
+                  <div style={{ fontSize: "0.75rem", opacity: 0.7 }}>Response SLA benchmarks (MTTA and MTTR) will populate as incident responses are logged.</div>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={incidentResolutionData} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                    <XAxis dataKey="category" stroke="var(--text-muted)" fontSize={11} tickLine={false} />
+                    <YAxis stroke="var(--text-muted)" fontSize={11} tickLine={false} unit="m" />
+                    <Tooltip contentStyle={{ backgroundColor: "#0F172A", borderColor: "rgba(255,255,255,0.1)", borderRadius: "8px", fontSize: "0.8rem" }} />
+                    <Legend wrapperStyle={{ fontSize: "0.75rem", paddingTop: "8px" }} />
+                    <Bar dataKey="mtta" fill="#F59E0B" name="MTTA (Time to Acknowledge / Dispatch)" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="mttr" fill="#EF4444" name="MTTR (Time to Resolve)" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </div>
 

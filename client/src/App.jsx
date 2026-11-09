@@ -128,6 +128,7 @@ export default function App() {
               <Route path="/organizer/comms" element={<OrganizerComms />} />
               <Route path="/organizer/crowd" element={<OrganizerCrowd />} />
               <Route path="/organizer/zones" element={<OrganizerZones />} />
+              <Route path="/organizer/sponsors" element={<OrganizerContent />} />
               <Route path="/organizer/content" element={<OrganizerContent />} />
               <Route path="/organizer/analytics" element={<OrganizerAnalytics />} />
               <Route path="/organizer/assistance" element={<OrganizerAssistance />} />

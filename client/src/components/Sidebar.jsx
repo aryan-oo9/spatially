@@ -13,6 +13,7 @@ import {
   LuArrowLeftRight,
   LuMapPin,
   LuTrendingUp,
+  LuAward,
 } from "react-icons/lu";
 
 const navConfig = {
@@ -53,7 +54,7 @@ const navConfig = {
       { path: "/organizer/crowd", icon: LuRadar, text: "Live Crowd Feed" },
       { path: "/organizer/map", icon: LuMapPin, text: "Vector Map Hub" },
       { path: "/organizer/zones", icon: LuLayoutDashboard, text: "Zone Capacity Editor" },
-      { path: "/organizer/content", icon: LuCalendarPlus, text: "Agenda & Content" },
+      { path: "/organizer/sponsors", icon: LuAward, text: "Brands & Sponsors" },
       { path: "/organizer/analytics", icon: LuTrendingUp, text: "Reporting & Intel" },
     ]},
     { label: "Settings", items: [
