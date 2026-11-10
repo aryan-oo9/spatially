@@ -17,6 +17,7 @@ class SpatiallyEvent {
   final String locationAddress;
   final String? startTime;
   final String? endTime;
+  final int ticketPrice;
 
   const SpatiallyEvent({
     required this.id,
@@ -33,6 +34,7 @@ class SpatiallyEvent {
     this.locationAddress = '',
     this.startTime,
     this.endTime,
+    this.ticketPrice = 0,
   });
 
   /// Creates a [SpatiallyEvent] from a Supabase row map.
@@ -76,6 +78,26 @@ class SpatiallyEvent {
     final venueId = json['venue_id']?.toString() ?? venueObj?['id']?.toString();
     final timezone = json['timezone']?.toString() ?? venueObj?['timezone']?.toString() ?? 'UTC';
 
+    // Parse ticket price (from field or embedded tag [TICKET_PRICE:x])
+    int parsedPrice = 0;
+    final rawPrice = json['ticket_price'];
+    if (rawPrice is int) {
+      parsedPrice = rawPrice;
+    } else if (rawPrice is num) {
+      parsedPrice = rawPrice.toInt();
+    } else if (rawPrice is String) {
+      parsedPrice = int.tryParse(rawPrice) ?? 0;
+    }
+
+    String cleanDescription = json['description']?.toString() ?? '';
+    final priceMatch = RegExp(r'\[TICKET_PRICE:(\d+)\]').firstMatch(cleanDescription);
+    if (priceMatch != null) {
+      if (parsedPrice == 0) {
+        parsedPrice = int.tryParse(priceMatch.group(1)!) ?? 0;
+      }
+      cleanDescription = cleanDescription.replaceAll(RegExp(r'\s*\[TICKET_PRICE:\d+\]'), '').trim();
+    }
+
     return SpatiallyEvent(
       id: json['id']?.toString() ?? '',
       name: json['name']?.toString() ?? 'Unnamed Event',
@@ -85,12 +107,13 @@ class SpatiallyEvent {
       timezone: timezone,
       status: (json['status']?.toString() ?? 'upcoming').toLowerCase(),
       zones: parsedZones,
-      description: json['description']?.toString() ?? '',
+      description: cleanDescription,
       capacity: parsedCapacity,
       organizerName: json['organizer_name']?.toString() ?? '',
       locationAddress: locationAddress,
       startTime: json['event_start_time']?.toString() ?? json['start_time']?.toString(),
       endTime: json['event_end_time']?.toString() ?? json['end_time']?.toString(),
+      ticketPrice: parsedPrice,
     );
   }
 
@@ -113,6 +136,7 @@ class SpatiallyEvent {
       'end_time': endTime,
       'event_start_time': startTime,
       'event_end_time': endTime,
+      'ticket_price': ticketPrice,
       'venues': {
         'id': venueId,
         'name': venue,
@@ -130,6 +154,12 @@ class SpatiallyEvent {
 
   /// Whether the event has concluded.
   bool get isEnded => status == 'ended';
+
+  /// Whether the event is free admission.
+  bool get isFree => ticketPrice <= 0;
+
+  /// Human-readable price label (e.g. "Free Admission" or "100 PTS").
+  String get priceLabel => isFree ? 'Free Admission' : '$ticketPrice PTS';
 
   /// Returns location summary prioritizing locationAddress then venue.
   String get fullLocation {

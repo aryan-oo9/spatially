@@ -156,9 +156,36 @@ class _EventListScreenState extends State<EventListScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    event.isLive
-                        ? SpatiallyStatusBadge.live()
-                        : SpatiallyStatusBadge.upcoming(),
+                    Row(
+                      children: [
+                        event.isLive
+                            ? SpatiallyStatusBadge.live()
+                            : SpatiallyStatusBadge.upcoming(),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: event.isFree
+                                ? SpatiallyColors.success.withValues(alpha: 0.12)
+                                : SpatiallyColors.violet.withValues(alpha: 0.12),
+                            borderRadius: SpatiallyRadius.borderFull,
+                            border: Border.all(
+                              color: event.isFree
+                                  ? SpatiallyColors.success.withValues(alpha: 0.3)
+                                  : SpatiallyColors.violet.withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Text(
+                            event.priceLabel,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: event.isFree ? SpatiallyColors.success : SpatiallyColors.violet,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                     Icon(
                       Icons.arrow_forward_ios_rounded,
                       size: 14,

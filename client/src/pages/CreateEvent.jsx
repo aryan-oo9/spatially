@@ -24,6 +24,7 @@ export default function CreateEvent() {
     end_time: "",
     description: "",
     capacity: "",
+    ticket_price: "",
     location_address: "",
     organizer_name: "",
     zones: [],
@@ -120,6 +121,10 @@ export default function CreateEvent() {
       newErrors.event_date = "Event date cannot be in the past";
     }
 
+    if (form.ticket_price && parseInt(form.ticket_price, 10) < 0) {
+      newErrors.ticket_price = "Ticket price cannot be negative";
+    }
+
     // Mandatory start_time and end_time validation
     if (!form.start_time) {
       newErrors.start_time = "Start time is mandatory";
@@ -172,6 +177,7 @@ export default function CreateEvent() {
       const payload = {
         ...form,
         capacity: form.capacity ? parseInt(form.capacity, 10) : 0,
+        ticket_price: form.ticket_price ? parseInt(form.ticket_price, 10) : 0,
         event_date: form.event_date + "T00:00:00Z",
         venue_id: form.venue_id || null,
       };
@@ -347,6 +353,28 @@ export default function CreateEvent() {
               <input id="event-end" type="time" className={`form-input ${errors.end_time ? "error" : ""}`} min={getMinEndTime()} value={form.end_time} onChange={(e) => updateField("end_time", e.target.value)} />
               {errors.end_time && <p className="form-error">{errors.end_time}</p>}
             </div>
+          </div>
+        </div>
+
+        {/* Ticketing & Pricing */}
+        <div className="card" style={{ marginBottom: "20px" }}>
+          <h3 className="card-title" style={{ marginBottom: "8px" }}>Ticket Price & Admission</h3>
+          <p style={{ color: "var(--text-secondary)", fontSize: "13px", marginBottom: "16px" }}>
+            Set the admission price in Points. Attendees will redeem their gamified quest points or promotional coupons to purchase tickets. Enter 0 for free admission.
+          </p>
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="ticket-price">Ticket Price (Points) *</label>
+            <input
+              id="ticket-price"
+              type="number"
+              min="0"
+              className={`form-input ${errors.ticket_price ? "error" : ""}`}
+              placeholder="e.g. 100 (0 for free)"
+              value={form.ticket_price}
+              onChange={(e) => updateField("ticket_price", e.target.value)}
+            />
+            {errors.ticket_price && <p className="form-error">{errors.ticket_price}</p>}
           </div>
         </div>
 

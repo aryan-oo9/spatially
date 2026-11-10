@@ -30,6 +30,7 @@ export default function EventDetail() {
     start_time: "",
     end_time: "",
     capacity: "",
+    ticket_price: "",
     status: "upcoming",
     timezone: "UTC",
   });
@@ -62,6 +63,7 @@ export default function EventDetail() {
       start_time: event.start_time || (event.event_start_time ? event.event_start_time.slice(11, 16) : ""),
       end_time: event.end_time || (event.event_end_time ? event.event_end_time.slice(11, 16) : ""),
       capacity: event.capacity != null ? String(event.capacity) : "",
+      ticket_price: event.ticket_price != null ? String(event.ticket_price) : "",
       status: event.status || "upcoming",
       timezone: event.timezone || "UTC",
     });
@@ -89,6 +91,9 @@ export default function EventDetail() {
       };
       if (editForm.capacity) {
         payload.capacity = parseInt(editForm.capacity, 10) || 0;
+      }
+      if (editForm.ticket_price !== "") {
+        payload.ticket_price = parseInt(editForm.ticket_price, 10) || 0;
       }
       const res = await api.put(`/api/events/${id}`, payload);
       setEvent(res.event);
@@ -256,6 +261,14 @@ export default function EventDetail() {
             </div>
 
             <div style={{ display: "flex", gap: "16px" }}>
+              <div style={{ flex: 1, background: "var(--bg-primary)", padding: "16px", borderRadius: "var(--radius-md)", border: "1px solid var(--border-light)" }}>
+                <LuTicket size={20} color="var(--warning)" style={{ marginBottom: "8px" }} />
+                <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>Ticket Price</div>
+                <div style={{ fontSize: "1.2rem", fontWeight: "700", color: "var(--primary)" }}>
+                  {event.ticket_price > 0 ? `${event.ticket_price} PTS` : "Free"}
+                </div>
+              </div>
+
               <div style={{ flex: 1, background: "var(--bg-primary)", padding: "16px", borderRadius: "var(--radius-md)", border: "1px solid var(--border-light)" }}>
                 <LuTicket size={20} color="var(--warning)" style={{ marginBottom: "8px" }} />
                 <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)" }}>Tickets Issued</div>
@@ -436,7 +449,20 @@ export default function EventDetail() {
                   </div>
                 </div>
 
-                <div className="form-row" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                <div className="form-row" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px" }}>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="edit-event-price">Ticket Price (PTS)</label>
+                    <input
+                      id="edit-event-price"
+                      type="number"
+                      min="0"
+                      className="form-input"
+                      value={editForm.ticket_price}
+                      onChange={(e) => setEditForm((prev) => ({ ...prev, ticket_price: e.target.value }))}
+                      placeholder="0 = Free"
+                    />
+                  </div>
+
                   <div className="form-group">
                     <label className="form-label" htmlFor="edit-event-capacity">Capacity</label>
                     <input

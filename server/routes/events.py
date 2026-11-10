@@ -3,6 +3,7 @@ from models import EventCreate, EventUpdate
 from config import get_supabase
 from middleware.auth import get_current_user, require_organizer
 from datetime import datetime, timezone
+import re
 
 router = APIRouter(prefix="/api/events", tags=["Events"])
 
@@ -33,6 +34,21 @@ def synthesize_event_compat(ev: dict) -> dict:
     elif "venue" not in res:
         res["venue"] = ""
         res["location_address"] = ""
+
+    # Parse ticket price
+    desc = res.get("description") or ""
+    price_match = re.search(r"\[TICKET_PRICE:(\d+)\]", desc)
+    if price_match:
+        res["ticket_price"] = int(price_match.group(1))
+        res["description"] = re.sub(r"\s*\[TICKET_PRICE:\d+\]", "", desc).strip()
+    elif "ticket_price" in res and res["ticket_price"] is not None:
+        try:
+            res["ticket_price"] = int(res["ticket_price"])
+        except (ValueError, TypeError):
+            res["ticket_price"] = 0
+    else:
+        res["ticket_price"] = 0
+
     return res
 
 
@@ -211,11 +227,16 @@ async def create_event(data: EventCreate, current_user: dict = Depends(require_o
                         detail=f"You already have an event scheduled that overlaps with this time slot",
                     )
 
+    ticket_price = getattr(data, "ticket_price", 0) or 0
+    desc = data.description or ""
+    if ticket_price > 0 and "[TICKET_PRICE:" not in desc:
+        desc = f"{desc}\n\n[TICKET_PRICE:{ticket_price}]".strip()
+
     new_event = {
         "name": data.name,
         "venue_id": data.venue_id,
         "status": "upcoming",
-        "description": data.description or "",
+        "description": desc,
         "capacity": data.capacity or 0,
         "organizer_id": current_user["user_id"],
         "timezone": data.timezone or "UTC",
@@ -301,8 +322,16 @@ async def update_event(
             end_dt = f"{date_str[:10]}T{t}Z"
             updates["event_end_time"] = end_dt
 
-    if not updates:
+    if not updates and "ticket_price" not in dumped:
         raise HTTPException(status_code=400, detail="No fields to update")
+
+    if "ticket_price" in dumped and dumped["ticket_price"] is not None:
+        tp = int(dumped["ticket_price"])
+        cur_desc = updates.get("description", event.get("description") or "")
+        clean_desc = re.sub(r"\s*\[TICKET_PRICE:\d+\]", "", cur_desc).strip()
+        if tp > 0:
+            clean_desc = f"{clean_desc}\n\n[TICKET_PRICE:{tp}]".strip()
+        updates["description"] = clean_desc
 
     supabase.table("events").update(updates).eq("id", event_id).execute()
 

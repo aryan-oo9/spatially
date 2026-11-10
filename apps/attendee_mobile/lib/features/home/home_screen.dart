@@ -26,6 +26,8 @@ import '../map/models/venue_map_models.dart';
 import '../event_content/data/event_content_repository.dart';
 import '../event_content/models/spatially_session.dart';
 import '../event_content/sessions/session_detail_screen.dart';
+import '../wallet/data/wallet_service.dart';
+import '../wallet/screens/wallet_screen.dart';
 
 /// Spatially Attendee — Home Screen (Phase 3A & Phase 7C).
 ///
@@ -91,9 +93,12 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadData();
+    WalletService.instance.init();
+    WalletService.instance.addListener(_onWalletChanged);
     _authSub = AuthService().onAuthStateChange.listen((_) {
       if (mounted) {
         _loadData();
+        WalletService.instance.init();
       }
     });
 
@@ -122,8 +127,13 @@ class _HomeScreenState extends State<HomeScreen> {
     _liveTicker?.cancel();
     _lifecycleListener?.dispose();
     _authSub?.cancel();
+    WalletService.instance.removeListener(_onWalletChanged);
     _notificationRepo.unsubscribeRealtime();
     super.dispose();
+  }
+
+  void _onWalletChanged() {
+    if (mounted) setState(() {});
   }
 
   void _refreshLiveSessionState(String eventId) {
@@ -394,6 +404,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       return HomeGreeting(
                         hasTickets: _primaryTicket != null,
                         unreadNotificationsCount: unreadCount,
+                        pointsBalance: WalletService.instance.balance,
+                        onWalletTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const WalletScreen(),
+                            ),
+                          );
+                        },
                         onNotificationsTap: () {
                           final eventObj = _primaryEvent != null
                               ? SpatiallyEvent.fromJson(_primaryEvent!)

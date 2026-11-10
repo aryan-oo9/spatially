@@ -91,6 +91,7 @@ class EventCreate(BaseModel):
     event_end_time: Optional[str] = None
     description: Optional[str] = ""
     capacity: Optional[int] = 0
+    ticket_price: Optional[int] = 0
     zones: List[str] = []
     location_address: Optional[str] = ""
     organizer_name: Optional[str] = ""
@@ -122,6 +123,7 @@ class EventUpdate(BaseModel):
     event_end_time: Optional[str] = None
     description: Optional[str] = None
     capacity: Optional[int] = None
+    ticket_price: Optional[int] = None
     zones: Optional[List[str]] = None
     status: Optional[str] = None
     location_address: Optional[str] = None

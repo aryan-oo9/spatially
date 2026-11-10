@@ -21,6 +21,8 @@ import '../event_content/sessions/sessions_screen.dart';
 import '../event_content/sessions/session_detail_screen.dart';
 import '../event_content/booths/booths_screen.dart';
 import '../event_content/activities/activities_screen.dart';
+import '../wallet/data/wallet_service.dart';
+import '../wallet/screens/wallet_screen.dart';
 
 /// Spatially Attendee Event Detail & Content Hub Screen.
 /// 
@@ -67,6 +69,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     super.initState();
     _checkExistingTicket();
     _loadEventContent();
+    WalletService.instance.addListener(_onWalletChanged);
     _statusTicker = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
     });
@@ -79,9 +82,14 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
   @override
   void dispose() {
+    WalletService.instance.removeListener(_onWalletChanged);
     _statusTicker?.cancel();
     _lifecycleListener?.dispose();
     super.dispose();
+  }
+
+  void _onWalletChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _checkExistingTicket() async {
@@ -151,34 +159,197 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
       return;
     }
 
+    final ticketPrice = widget.event.ticketPrice;
+    final wallet = WalletService.instance;
+    final walletBalance = wallet.balance;
+
+    if (ticketPrice > 0 && walletBalance < ticketPrice) {
+      final remaining = ticketPrice - walletBalance;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) {
+          final theme = Theme.of(ctx);
+          final isDark = theme.brightness == Brightness.dark;
+          final txtPrimary = isDark ? SpatiallyColors.darkTextPrimary : SpatiallyColors.lightTextPrimary;
+          final txtSecondary = isDark ? SpatiallyColors.darkTextSecondary : SpatiallyColors.lightTextSecondary;
+
+          return AlertDialog(
+            backgroundColor: isDark ? SpatiallyColors.darkSurface : SpatiallyColors.lightSurface,
+            shape: const RoundedRectangleBorder(borderRadius: SpatiallyRadius.borderMd),
+            title: Row(
+              children: [
+                const Icon(Icons.info_outline_rounded, color: SpatiallyColors.warning, size: 22),
+                const SizedBox(width: 8),
+                Text(
+                  'Insufficient Points',
+                  style: SpatiallyTypography.sectionHeading(color: txtPrimary),
+                ),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: isDark ? SpatiallyColors.darkSurfaceElevated : SpatiallyColors.lightSurfaceElevated,
+                    borderRadius: SpatiallyRadius.borderSm,
+                    border: Border.all(
+                      color: isDark ? SpatiallyColors.darkBorderSubdued : SpatiallyColors.lightBorderSubdued,
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Ticket Price:', style: SpatiallyTypography.caption(color: txtSecondary)),
+                          Text('$ticketPrice PTS', style: TextStyle(fontWeight: FontWeight.w700, color: txtPrimary)),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Points Balance:', style: SpatiallyTypography.caption(color: txtSecondary)),
+                          Text('$walletBalance PTS', style: TextStyle(fontWeight: FontWeight.w700, color: txtPrimary)),
+                        ],
+                      ),
+                      const Divider(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Remaining to Pay:', style: TextStyle(fontWeight: FontWeight.w600, color: SpatiallyColors.error)),
+                          Text('$remaining PTS', style: TextStyle(fontWeight: FontWeight.w800, color: SpatiallyColors.error, fontSize: 15)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Your points balance is insufficient to pay for this ticket. The remaining amount ($remaining PTS) must be paid.',
+                  style: SpatiallyTypography.body(color: txtSecondary),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Note: Standard payment gateways are not enabled yet; only point-based purchases are currently allowed. You can earn points by completing gamified quests or redeeming promo coupons in your Points Wallet.',
+                  style: SpatiallyTypography.caption(color: txtSecondary),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: Text('Close', style: TextStyle(color: txtSecondary)),
+              ),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.account_balance_wallet_rounded, size: 16),
+                label: const Text('Go to Wallet'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: SpatiallyColors.violet,
+                  foregroundColor: Colors.white,
+                  shape: const RoundedRectangleBorder(borderRadius: SpatiallyRadius.borderSm),
+                ),
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const WalletScreen()),
+                  );
+                },
+              ),
+            ],
+          );
+        },
+      );
+      return;
+    }
+
+    // When balance is sufficient or ticket is free
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) {
         final theme = Theme.of(ctx);
         final isDark = theme.brightness == Brightness.dark;
+        final txtPrimary = isDark ? SpatiallyColors.darkTextPrimary : SpatiallyColors.lightTextPrimary;
+        final txtSecondary = isDark ? SpatiallyColors.darkTextSecondary : SpatiallyColors.lightTextSecondary;
+
         return AlertDialog(
           backgroundColor: isDark ? SpatiallyColors.darkSurface : SpatiallyColors.lightSurface,
           shape: const RoundedRectangleBorder(borderRadius: SpatiallyRadius.borderMd),
           title: Text(
-            'Confirm Admission',
-            style: SpatiallyTypography.sectionHeading(
-              color: isDark ? SpatiallyColors.darkTextPrimary : SpatiallyColors.lightTextPrimary,
-            ),
+            ticketPrice > 0 ? 'Purchase Admission Ticket' : 'Confirm Admission',
+            style: SpatiallyTypography.sectionHeading(color: txtPrimary),
           ),
-          content: Text(
-            'Reserve an admission pass for "${widget.event.name}"?',
-            style: SpatiallyTypography.body(
-              color: isDark ? SpatiallyColors.darkTextSecondary : SpatiallyColors.lightTextSecondary,
-            ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Event: ${widget.event.name}',
+                style: TextStyle(fontWeight: FontWeight.w600, color: txtPrimary),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? SpatiallyColors.darkSurfaceElevated : SpatiallyColors.lightSurfaceElevated,
+                  borderRadius: SpatiallyRadius.borderSm,
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Ticket Cost:', style: SpatiallyTypography.caption(color: txtSecondary)),
+                        Text(ticketPrice > 0 ? '$ticketPrice PTS' : 'Free (0 PTS)', style: TextStyle(fontWeight: FontWeight.w700, color: txtPrimary)),
+                      ],
+                    ),
+                    if (ticketPrice > 0) ...[
+                      const SizedBox(height: 6),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Wallet Balance:', style: SpatiallyTypography.caption(color: txtSecondary)),
+                          Text('$walletBalance PTS', style: TextStyle(fontWeight: FontWeight.w700, color: SpatiallyColors.success)),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Balance after purchase:', style: SpatiallyTypography.caption(color: txtSecondary)),
+                          Text('${walletBalance - ticketPrice} PTS', style: TextStyle(fontWeight: FontWeight.w700, color: txtPrimary)),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (ticketPrice > 0) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const Icon(Icons.check_circle, size: 16, color: SpatiallyColors.success),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Pay whole amount ($ticketPrice PTS) using points balance',
+                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: txtPrimary),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
               child: Text(
                 'Cancel',
-                style: SpatiallyTypography.body(
-                  color: isDark ? SpatiallyColors.darkTextSecondary : SpatiallyColors.lightTextSecondary,
-                ),
+                style: SpatiallyTypography.body(color: txtSecondary),
               ),
             ),
             ElevatedButton(
@@ -188,7 +359,7 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                 foregroundColor: Colors.white,
                 shape: const RoundedRectangleBorder(borderRadius: SpatiallyRadius.borderSm),
               ),
-              child: const Text('Confirm'),
+              child: Text(ticketPrice > 0 ? 'Pay with Points' : 'Confirm'),
             ),
           ],
         );
@@ -203,6 +374,18 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
     });
 
     try {
+      // If paid ticket, debit points first
+      if (ticketPrice > 0) {
+        final debited = await wallet.debitForTicket(
+          price: ticketPrice,
+          eventName: widget.event.name,
+          eventId: widget.event.id,
+        );
+        if (!debited) {
+          throw Exception('Insufficient points balance in wallet.');
+        }
+      }
+
       final shortUuid = const Uuid().v4().substring(0, 8).toUpperCase();
       final ticketCode = 'SPAT-$shortUuid';
       final insertData = {
@@ -233,19 +416,23 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Admission ticket confirmed for ${widget.event.name}!'),
+          content: Text(
+            ticketPrice > 0
+                ? '🎉 Ticket purchased! $ticketPrice PTS paid from your wallet.'
+                : 'Admission ticket confirmed for ${widget.event.name}!',
+          ),
           backgroundColor: SpatiallyColors.success,
         ),
       );
     } catch (e) {
       if (!mounted) return;
       setState(() {
+        _errorMessage = 'Failed to reserve admission: $e';
         _claimingTicket = false;
-        _errorMessage = 'Failed to claim ticket: $e';
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error getting ticket: $e'),
+          content: Text(_errorMessage!),
           backgroundColor: SpatiallyColors.error,
         ),
       );
@@ -845,12 +1032,40 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        'Free Admission',
-                                        style: SpatiallyTypography.subheading(color: textPrimary),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            widget.event.isFree ? 'Free Admission' : '${widget.event.ticketPrice} PTS',
+                                            style: SpatiallyTypography.subheading(color: textPrimary),
+                                          ),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                            decoration: BoxDecoration(
+                                              color: (widget.event.isFree ? SpatiallyColors.success : SpatiallyColors.violet)
+                                                  .withValues(alpha: 0.12),
+                                              borderRadius: SpatiallyRadius.borderFull,
+                                              border: Border.all(
+                                                color: (widget.event.isFree ? SpatiallyColors.success : SpatiallyColors.violet)
+                                                    .withValues(alpha: 0.3),
+                                              ),
+                                            ),
+                                            child: Text(
+                                              widget.event.isFree ? 'COMPLIMENTARY' : 'POINTS ADMISSION',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w700,
+                                                color: widget.event.isFree ? SpatiallyColors.success : SpatiallyColors.violet,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
+                                      const SizedBox(height: 2),
                                       Text(
-                                        'Reserve your digital ticket for event entry',
+                                        widget.event.isFree
+                                            ? 'Reserve your digital ticket for event entry'
+                                            : 'Pay using points balance • Wallet: ${WalletService.instance.balance} PTS',
                                         style: SpatiallyTypography.secondary(color: textSecondary),
                                       ),
                                     ],
@@ -858,9 +1073,60 @@ class _EventDetailScreenState extends State<EventDetailScreen> {
                                 ),
                               ],
                             ),
+                            if (!widget.event.isFree) ...[
+                              const SizedBox(height: 12),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: isDark
+                                      ? SpatiallyColors.darkSurfaceElevated
+                                      : SpatiallyColors.lightSurfaceElevated,
+                                  borderRadius: SpatiallyRadius.borderSm,
+                                  border: Border.all(
+                                    color: isDark
+                                        ? SpatiallyColors.darkBorderSubdued
+                                        : SpatiallyColors.lightBorderSubdued,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.account_balance_wallet_rounded, size: 16, color: SpatiallyColors.violet),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          'Points Balance:',
+                                          style: SpatiallyTypography.caption(color: textSecondary),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          '${WalletService.instance.balance} PTS',
+                                          style: TextStyle(fontWeight: FontWeight.w700, color: textPrimary, fontSize: 13),
+                                        ),
+                                      ],
+                                    ),
+                                    if (WalletService.instance.balance < widget.event.ticketPrice)
+                                      Text(
+                                        '${widget.event.ticketPrice - WalletService.instance.balance} PTS needed',
+                                        style: const TextStyle(fontWeight: FontWeight.w700, color: SpatiallyColors.error, fontSize: 12),
+                                      )
+                                    else
+                                      const Text(
+                                        'Sufficient Balance',
+                                        style: TextStyle(fontWeight: FontWeight.w700, color: SpatiallyColors.success, fontSize: 12),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ],
                             SpatiallySpacing.gapVerticalLg,
                             SpatiallyPrimaryButton(
-                              label: _claimingTicket ? 'Confirming...' : 'Get Admission Ticket',
+                              label: _claimingTicket
+                                  ? 'Processing...'
+                                  : (widget.event.isFree
+                                      ? 'Get Free Admission Pass'
+                                      : 'Buy Ticket (${widget.event.ticketPrice} PTS)'),
                               icon: const Icon(Icons.confirmation_number_rounded, color: Colors.white, size: 20),
                               isLoading: _claimingTicket,
                               onPressed: _claimingTicket ? null : _claimTicket,
