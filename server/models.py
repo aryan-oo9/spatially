@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, field_validator
-from typing import Optional, List
+from typing import Optional, List, Any, Dict, Union
 import re
 
 
@@ -92,7 +92,7 @@ class EventCreate(BaseModel):
     description: Optional[str] = ""
     capacity: Optional[int] = 0
     ticket_price: Optional[int] = 0
-    zones: List[str] = []
+    zones: List[Any] = []
     location_address: Optional[str] = ""
     organizer_name: Optional[str] = ""
 

@@ -8,7 +8,7 @@ import bcrypt
 load_dotenv()
 
 from config import get_supabase, FRONTEND_URL
-from routes import events, volunteers, dashboard, venue_map, logs, organizer
+from routes import events, volunteers, dashboard, venue_map, logs, organizer, venues
 
 
 
@@ -61,7 +61,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 app.include_router(events.router)
-app.include_router(events.venues_router)
+app.include_router(venues.router)
 app.include_router(volunteers.router)
 app.include_router(dashboard.router)
 app.include_router(venue_map.router)

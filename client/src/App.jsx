@@ -37,6 +37,7 @@ import OrganizerContent from "./pages/OrganizerContent";
 import OrganizerAnalytics from "./pages/OrganizerAnalytics";
 import OrganizerAssistance from "./pages/OrganizerAssistance";
 import OrganizerMap from "./pages/OrganizerMap";
+import OrganizerVenues from "./pages/OrganizerVenues";
 
 import Profile from "./pages/Profile";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -132,6 +133,7 @@ export default function App() {
               <Route path="/organizer/content" element={<OrganizerContent />} />
               <Route path="/organizer/analytics" element={<OrganizerAnalytics />} />
               <Route path="/organizer/assistance" element={<OrganizerAssistance />} />
+              <Route path="/organizer/venues" element={<OrganizerVenues />} />
               <Route path="/organizer/map" element={<OrganizerMap />} />
             </Route>
 

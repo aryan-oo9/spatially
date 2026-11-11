@@ -251,16 +251,43 @@ async def create_event(data: EventCreate, current_user: dict = Depends(require_o
 
     # Automatically create initial event_zones if zones are provided
     if data.zones:
+        base_level_id = None
+        base_floor_level = 1
+        if created_event.get("venue_id"):
+            try:
+                lvl_res = (
+                    supabase.table("venue_levels")
+                    .select("id, level_index")
+                    .eq("venue_id", created_event["venue_id"])
+                    .order("level_index")
+                    .execute()
+                )
+                if lvl_res.data:
+                    base_level_id = lvl_res.data[0]["id"]
+                    base_floor_level = lvl_res.data[0].get("level_index", 0) + 1
+            except Exception:
+                pass
+
         zone_records = []
         for idx, z in enumerate(data.zones):
-            z_name = z.strip() if isinstance(z, str) else str(z).strip()
+            if isinstance(z, dict):
+                z_name = (z.get("name") or z.get("zone") or f"Zone {idx+1}").strip()
+                z_level_id = z.get("level_id") or base_level_id
+                z_floor_level = z.get("floor_level") if z.get("floor_level") is not None else base_floor_level
+            else:
+                z_name = str(z).strip()
+                z_level_id = base_level_id
+                z_floor_level = base_floor_level
+
             if not z_name:
                 continue
+
             zone_records.append({
                 "event_id": created_event["id"],
                 "name": z_name,
                 "code": z_name.upper().replace(" ", "_")[:20],
-                "floor_level": 1,
+                "floor_level": z_floor_level,
+                "level_id": z_level_id,
                 "is_crowd_monitored": True,
             })
         if zone_records:
