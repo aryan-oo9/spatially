@@ -6,6 +6,7 @@ import '../../explore/models/spatially_event.dart';
 import '../../map/map_screen.dart';
 import '../data/event_content_repository.dart';
 import '../models/spatially_activity.dart';
+import '../../wallet/data/wallet_service.dart';
 
 /// Detailed view for an event activity, challenge, or quest.
 /// 
@@ -202,8 +203,14 @@ class _ActivityDetailScreenState extends State<ActivityDetailScreen> {
                                 isError: false,
                               );
                             } else {
+                              final ptsAwarded = (result['points_awarded'] as num?)?.toInt() ?? widget.activity.points;
+                              WalletService.instance.creditQuestPoints(
+                                points: ptsAwarded,
+                                activityTitle: widget.activity.title,
+                                activityId: widget.activity.id,
+                              );
                               _showFeedbackSnackBar(
-                                '🎉 Checkpoint verified! +${result['points_awarded']} PTS claimed!',
+                                '🎉 Checkpoint verified! +$ptsAwarded PTS claimed!',
                                 isError: false,
                               );
                             }

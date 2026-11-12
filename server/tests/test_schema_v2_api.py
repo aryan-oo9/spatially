@@ -162,6 +162,28 @@ def test_invite_bulk_endpoint_schema():
         app.dependency_overrides.clear()
 
 
+def test_synthesize_event_ticket_price():
+    from routes.events import synthesize_event_compat
+    ev_with_tag = {
+        "id": "test-id",
+        "name": "Tech Conference",
+        "description": "Exciting event!\n\n[TICKET_PRICE:150]",
+    }
+    synth = synthesize_event_compat(ev_with_tag)
+    assert synth["ticket_price"] == 150
+    assert "[TICKET_PRICE:150]" not in synth["description"]
+    assert synth["description"] == "Exciting event!"
+
+    ev_free = {
+        "id": "free-id",
+        "name": "Community Meetup",
+        "description": "Free for all attendees",
+    }
+    synth_free = synthesize_event_compat(ev_free)
+    assert synth_free["ticket_price"] == 0
+
+
+
 
 
 

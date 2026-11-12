@@ -14,6 +14,8 @@ class HomeGreeting extends StatelessWidget {
   final bool hasTickets;
   final VoidCallback? onNotificationsTap;
   final int unreadNotificationsCount;
+  final VoidCallback? onWalletTap;
+  final int pointsBalance;
 
   const HomeGreeting({
     super.key,
@@ -21,6 +23,8 @@ class HomeGreeting extends StatelessWidget {
     this.hasTickets = false,
     this.onNotificationsTap,
     this.unreadNotificationsCount = 0,
+    this.onWalletTap,
+    this.pointsBalance = 0,
   });
 
   String _greeting() {
@@ -112,6 +116,49 @@ class HomeGreeting extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (onWalletTap != null) ...[
+              Semantics(
+                label: 'Points Wallet ($pointsBalance points)',
+                button: true,
+                child: GestureDetector(
+                  onTap: onWalletTap,
+                  child: Container(
+                    height: 44,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? SpatiallyColors.darkSurface
+                          : SpatiallyColors.lightSurface,
+                      borderRadius: SpatiallyRadius.borderSm,
+                      border: Border.all(
+                        color: SpatiallyColors.violet.withValues(alpha: 0.35),
+                      ),
+                      boxShadow: SpatiallyShadows.cardShadow(isDark: isDark),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.account_balance_wallet_rounded,
+                          size: 18,
+                          color: SpatiallyColors.violet,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          '$pointsBalance pts',
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
             if (onNotificationsTap != null) ...[
               Semantics(
                 label: 'Notifications ($unreadNotificationsCount unread)',

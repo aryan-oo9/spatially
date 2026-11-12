@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useToast } from "../components/Toast";
 import { api } from "../utils/api";
 import { getMinDate } from "../utils/validators";
-import { LuPlus, LuX, LuLoader, LuBuilding } from "react-icons/lu";
+import { LuPlus, LuX, LuLoader, LuBuilding, LuLayers } from "react-icons/lu";
 import VenueMap from "../components/VenueMap";
 
 export default function CreateEvent() {
@@ -11,7 +11,9 @@ export default function CreateEvent() {
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
   const [zoneInput, setZoneInput] = useState("");
+  const [zoneFloorId, setZoneFloorId] = useState("");
   const [venues, setVenues] = useState([]);
+  const [selectedVenue, setSelectedVenue] = useState(null);
   const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
   const [form, setForm] = useState({
@@ -24,6 +26,7 @@ export default function CreateEvent() {
     end_time: "",
     description: "",
     capacity: "",
+    ticket_price: "",
     location_address: "",
     organizer_name: "",
     zones: [],
@@ -36,15 +39,19 @@ export default function CreateEvent() {
   useEffect(() => {
     api.get("/api/venues")
       .then((data) => {
-        setVenues(data.venues || []);
-        if (data.venues && data.venues.length > 0 && !form.venue_id) {
-          const first = data.venues[0];
+        const vList = data.venues || [];
+        setVenues(vList);
+        if (vList.length > 0 && !form.venue_id) {
+          const first = vList[0];
           setForm((prev) => ({
             ...prev,
             venue_id: first.id,
             venue: first.name,
             location_address: first.address || prev.location_address,
+            timezone: first.timezone || prev.timezone,
+            capacity: first.default_capacity ? String(first.default_capacity) : prev.capacity,
           }));
+          setSelectedVenue(first);
         }
       })
       .catch(() => {
@@ -65,27 +72,74 @@ export default function CreateEvent() {
         venue_id: v.id,
         venue: v.name,
         location_address: v.address || prev.location_address,
+        timezone: v.timezone || prev.timezone,
         capacity: v.default_capacity ? String(v.default_capacity) : prev.capacity,
       }));
+      setSelectedVenue(v);
+      if (v.levels && v.levels.length > 0) {
+        setZoneFloorId(v.levels[0].id);
+      }
       setErrors((prev) => ({ ...prev, venue_id: null, venue: null }));
     } else {
+      setSelectedVenue(null);
+      setZoneFloorId("");
       setForm((prev) => ({ ...prev, venue_id: venueId }));
     }
   };
 
   const addZone = () => {
-    const zone = zoneInput.trim();
-    if (!zone) return;
-    if (form.zones.includes(zone)) {
-      toast("Zone already added", "warning");
+    const name = zoneInput.trim();
+    if (!name) return;
+    const exists = form.zones.some((z) => {
+      const zName = typeof z === "string" ? z : z.name;
+      return zName.toLowerCase() === name.toLowerCase();
+    });
+    if (exists) {
+      toast("Zone with this name already added", "warning");
       return;
     }
-    setForm((prev) => ({ ...prev, zones: [...prev.zones, zone] }));
+
+    const levels = selectedVenue?.levels || [];
+    const targetLvl = levels.find((l) => l.id === zoneFloorId) || levels[0];
+    const newZone = {
+      name,
+      level_id: targetLvl?.id || null,
+      floor_level: targetLvl?.level_index !== undefined ? targetLvl.level_index + 1 : 1,
+      short_code: targetLvl?.short_code || "G",
+      floor_name: targetLvl?.name || "Base Floor",
+    };
+
+    setForm((prev) => ({ ...prev, zones: [...prev.zones, newZone] }));
     setZoneInput("");
   };
 
-  const removeZone = (zone) => {
-    setForm((prev) => ({ ...prev, zones: prev.zones.filter((z) => z !== zone) }));
+  const changeZoneFloor = (index, targetLevelId) => {
+    const levels = selectedVenue?.levels || [];
+    const targetLvl = levels.find((l) => l.id === targetLevelId);
+    setForm((prev) => {
+      const updated = [...prev.zones];
+      const z = updated[index];
+      const zName = typeof z === "string" ? z : z.name;
+      updated[index] = {
+        name: zName,
+        level_id: targetLevelId,
+        floor_level: targetLvl?.level_index !== undefined ? targetLvl.level_index + 1 : 1,
+        short_code: targetLvl?.short_code || "G",
+        floor_name: targetLvl?.name || "Floor",
+      };
+      return { ...prev, zones: updated };
+    });
+  };
+
+  const removeZone = (zoneToRemove) => {
+    const targetName = typeof zoneToRemove === "string" ? zoneToRemove : zoneToRemove.name;
+    setForm((prev) => ({
+      ...prev,
+      zones: prev.zones.filter((z) => {
+        const name = typeof z === "string" ? z : z.name;
+        return name !== targetName;
+      }),
+    }));
   };
 
   const getMinStartTime = () => {
@@ -118,6 +172,10 @@ export default function CreateEvent() {
     if (!form.event_date) newErrors.event_date = "Event date is required";
     if (form.event_date && form.event_date < getMinDate()) {
       newErrors.event_date = "Event date cannot be in the past";
+    }
+
+    if (form.ticket_price && parseInt(form.ticket_price, 10) < 0) {
+      newErrors.ticket_price = "Ticket price cannot be negative";
     }
 
     // Mandatory start_time and end_time validation
@@ -169,9 +227,20 @@ export default function CreateEvent() {
   const createEvent = async (customLayout = null) => {
     setSubmitting(true);
     try {
+      let finalZones = form.zones.map((z) => (typeof z === "string" ? { name: z } : z));
+      if (customLayout && customLayout.length > 0) {
+        finalZones = customLayout.map((z) => ({
+          name: z.name || z.zone,
+          level_id: z.level_id || null,
+          floor_level: z.floor_level || 1,
+        }));
+      }
+
       const payload = {
         ...form,
+        zones: finalZones,
         capacity: form.capacity ? parseInt(form.capacity, 10) : 0,
+        ticket_price: form.ticket_price ? parseInt(form.ticket_price, 10) : 0,
         event_date: form.event_date + "T00:00:00Z",
         venue_id: form.venue_id || null,
       };
@@ -217,6 +286,7 @@ export default function CreateEvent() {
         <div className="card">
           <VenueMap
              eventId={null}
+             venueLevels={selectedVenue?.levels || []}
              zones={form.zones}
              mode="create-event"
              onExitEditMode={(layout) => {
@@ -259,10 +329,20 @@ export default function CreateEvent() {
           {/* Venue Binding Dropdown & Address */}
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label" htmlFor="venue-select">
-                <LuBuilding size={14} style={{ display: "inline", marginRight: "4px" }} />
-                Select Venue *
-              </label>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                <label className="form-label" htmlFor="venue-select" style={{ marginBottom: 0 }}>
+                  <LuBuilding size={14} style={{ display: "inline", marginRight: "4px" }} />
+                  Select Venue *
+                </label>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => navigate("/organizer/venues")}
+                  style={{ fontSize: "0.78rem", color: "var(--primary-color, #10B981)", padding: "0 6px", height: "auto" }}
+                >
+                  + Add / Manage Venues
+                </button>
+              </div>
               <select
                 id="venue-select"
                 className={`form-select ${errors.venue_id ? "error" : ""}`}
@@ -272,7 +352,7 @@ export default function CreateEvent() {
                 <option value="">-- Choose Registered Venue --</option>
                 {venues.map((v) => (
                   <option key={v.id} value={v.id}>
-                    {v.name} {v.address ? `(${v.address})` : ""}
+                    {v.name} ({v.floor_count || v.levels?.length || 1} Floor{v.floor_count === 1 ? "" : "s"}{v.address ? ` • ${v.address}` : ""})
                   </option>
                 ))}
               </select>
@@ -297,6 +377,54 @@ export default function CreateEvent() {
             <label className="form-label" htmlFor="event-address">Venue Address</label>
             <input id="event-address" type="text" className="form-input" placeholder="123 Main Street, City" value={form.location_address} onChange={(e) => updateField("location_address", e.target.value)} />
           </div>
+
+          {/* Imported Venue Structure & Floors */}
+          {selectedVenue && (
+            <div
+              style={{
+                background: "var(--bg-secondary)",
+                border: "1px solid var(--border-light)",
+                padding: "12px 16px",
+                borderRadius: "10px",
+                marginTop: "12px",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", flexWrap: "wrap", gap: "6px" }}>
+                <div style={{ fontSize: "0.85rem", fontWeight: "700", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <LuLayers style={{ color: "var(--primary-color, #10B981)" }} />
+                  Imported Venue Architecture: {selectedVenue.name} ({selectedVenue.levels?.length || 1} Floor{selectedVenue.levels?.length === 1 ? "" : "s"})
+                </div>
+                <span className="badge badge-primary" style={{ textTransform: "capitalize", fontSize: "0.75rem" }}>
+                  {selectedVenue.venue_type ? selectedVenue.venue_type.replace("_", " ") : "Multi Floor"}
+                </span>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                {(selectedVenue.levels || []).map((lvl) => (
+                  <span
+                    key={lvl.id || lvl.level_index}
+                    style={{
+                      background: "var(--bg-card)",
+                      border: "1px solid var(--border-light)",
+                      padding: "3px 8px",
+                      borderRadius: "6px",
+                      fontSize: "0.8rem",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "5px",
+                    }}
+                  >
+                    <strong style={{ color: "var(--primary-color, #10B981)", fontFamily: "monospace" }}>
+                      [{lvl.short_code || `L${lvl.level_index}`}]
+                    </strong>
+                    <span>{lvl.name}</span>
+                  </span>
+                ))}
+              </div>
+              <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "8px", marginBottom: 0 }}>
+                ✓ Venue floors imported. Each floor has its own distinct spatial layout for the organizer dashboard and attendee app.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Schedule: Mandatory Date, Start Time & End Time */}
@@ -350,6 +478,28 @@ export default function CreateEvent() {
           </div>
         </div>
 
+        {/* Ticketing & Pricing */}
+        <div className="card" style={{ marginBottom: "20px" }}>
+          <h3 className="card-title" style={{ marginBottom: "8px" }}>Ticket Price & Admission</h3>
+          <p style={{ color: "var(--text-secondary)", fontSize: "13px", marginBottom: "16px" }}>
+            Set the admission price in Points. Attendees will redeem their gamified quest points or promotional coupons to purchase tickets. Enter 0 for free admission.
+          </p>
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="ticket-price">Ticket Price (Points) *</label>
+            <input
+              id="ticket-price"
+              type="number"
+              min="0"
+              className={`form-input ${errors.ticket_price ? "error" : ""}`}
+              placeholder="e.g. 100 (0 for free)"
+              value={form.ticket_price}
+              onChange={(e) => updateField("ticket_price", e.target.value)}
+            />
+            {errors.ticket_price && <p className="form-error">{errors.ticket_price}</p>}
+          </div>
+        </div>
+
         <div className="card" style={{ marginBottom: "20px" }}>
           <h3 className="card-title" style={{ marginBottom: "20px" }}>Capacity & Zones</h3>
 
@@ -359,30 +509,85 @@ export default function CreateEvent() {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Event Zones</label>
-            <div className="zones-input-row">
+            <label className="form-label">Event Zones & Floor Allocation</label>
+            <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginBottom: "8px" }}>
+              Add functional zones and assign each zone to its physical floor.
+            </p>
+            <div className="zones-input-row" style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
               <input
                 type="text"
                 className="form-input"
-                placeholder="Main Stage, Food Court, VIP Area..."
+                placeholder="Zone name (e.g. Main Auditorium, Food Court)..."
                 value={zoneInput}
                 onChange={(e) => setZoneInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addZone(); } }}
+                style={{ flex: 1, minWidth: "220px" }}
               />
-              <button type="button" className="btn btn-secondary" onClick={addZone}>
-                <LuPlus size={16} />
+              {selectedVenue?.levels && selectedVenue.levels.length > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>Floor:</span>
+                  <select
+                    className="form-select"
+                    value={zoneFloorId}
+                    onChange={(e) => setZoneFloorId(e.target.value)}
+                    style={{ minWidth: "160px" }}
+                  >
+                    {selectedVenue.levels.map((lvl) => (
+                      <option key={lvl.id} value={lvl.id}>
+                        [{lvl.short_code || `L${lvl.level_index}`}] {lvl.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <button type="button" className="btn btn-secondary" onClick={addZone} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <LuPlus size={16} /> Add Zone
               </button>
             </div>
             {form.zones.length > 0 && (
-              <div className="zones-list">
-                {form.zones.map((zone) => (
-                  <span key={zone} className="zone-chip">
-                    {zone}
-                    <button type="button" onClick={() => removeZone(zone)} aria-label={`Remove ${zone} zone`}>
-                      <LuX size={14} />
-                    </button>
-                  </span>
-                ))}
+              <div className="zones-list" style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "14px" }}>
+                {form.zones.map((zone, idx) => {
+                  const zName = typeof zone === "string" ? zone : zone.name;
+                  const zLevelId = typeof zone === "object" ? zone.level_id : null;
+                  const zLvl = (selectedVenue?.levels || []).find((l) => l.id === zLevelId) || selectedVenue?.levels?.[0];
+                  return (
+                    <span key={idx} className="zone-chip" style={{ display: "inline-flex", alignItems: "center", gap: "8px", padding: "6px 12px" }}>
+                      <strong style={{ color: "var(--text-primary)" }}>{zName}</strong>
+                      {selectedVenue?.levels && selectedVenue.levels.length > 1 ? (
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                          <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>on</span>
+                          <select
+                            value={zLevelId || selectedVenue.levels[0]?.id}
+                            onChange={(e) => changeZoneFloor(idx, e.target.value)}
+                            style={{
+                              fontSize: "0.75rem",
+                              padding: "2px 6px",
+                              borderRadius: "6px",
+                              border: "1px solid var(--border-light)",
+                              background: "var(--bg-secondary)",
+                              color: "var(--primary-color, #10B981)",
+                              fontWeight: "700",
+                              cursor: "pointer",
+                            }}
+                          >
+                            {selectedVenue.levels.map((lvl) => (
+                              <option key={lvl.id} value={lvl.id}>
+                                [{lvl.short_code || `L${lvl.level_index}`}] {lvl.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : (
+                        <span className="badge badge-neutral" style={{ fontSize: "0.72rem" }}>
+                          [{zLvl?.short_code || "G"}]
+                        </span>
+                      )}
+                      <button type="button" onClick={() => removeZone(zone)} aria-label={`Remove ${zName} zone`} style={{ marginLeft: "4px" }}>
+                        <LuX size={14} />
+                      </button>
+                    </span>
+                  );
+                })}
               </div>
             )}
           </div>

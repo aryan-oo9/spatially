@@ -9,7 +9,9 @@ import {
   LuLayers, 
   LuCoffee,
   LuTriangleAlert,
-  LuCheck
+  LuCheck,
+  LuPlus,
+  LuTrash2
 } from "react-icons/lu";
 
 const DENSITY_COLORS = [
@@ -38,7 +40,7 @@ function polarToCartesian(centerX, centerY, radiusX, radiusY, angleInDegrees) {
   };
 }
 
-function computeAutoZoneLayout(zonesList) {
+function computeAutoZoneLayout(zonesList, venueLevels = []) {
   const n = zonesList.length;
   if (n === 0) return [];
   const rx = 0.36; 
@@ -50,13 +52,18 @@ function computeAutoZoneLayout(zonesList) {
     const angle = (startOffset + (i * angleStep)) % 360;
     const pos = polarToCartesian(0.5, 0.5, rx, ry, angle);
     const zName = typeof z === "string" ? z : (z.name || z.zone || `Zone ${i + 1}`);
+    const zLevelId = typeof z === "object" ? (z.level_id || (venueLevels[0]?.id || null)) : (venueLevels[0]?.id || null);
+    const zFloorLevel = typeof z === "object" ? (z.floor_level || 1) : 1;
     return {
-      zone_id: z.id || `auto-${i}`,
+      zone_id: (typeof z === "object" && z.id) ? z.id : `auto-${i}`,
       zone: zName,
-      x: pos.x,
-      y: pos.y,
-      bounds: { left: pos.x - 0.08, top: pos.y - 0.06, width: 0.16, height: 0.12 },
-      polygon: [
+      name: zName,
+      level_id: zLevelId,
+      floor_level: zFloorLevel,
+      x: (typeof z === "object" && z.x !== undefined) ? z.x : pos.x,
+      y: (typeof z === "object" && z.y !== undefined) ? z.y : pos.y,
+      bounds: (typeof z === "object" && z.bounds) ? z.bounds : { left: pos.x - 0.08, top: pos.y - 0.06, width: 0.16, height: 0.12 },
+      polygon: (typeof z === "object" && z.polygon) ? z.polygon : [
         { x: pos.x - 0.08, y: pos.y - 0.06 },
         { x: pos.x + 0.08, y: pos.y - 0.06 },
         { x: pos.x + 0.08, y: pos.y + 0.06 },
@@ -115,6 +122,7 @@ function getPolygonCentroid(pts) {
 export default function VenueMap({
   eventId,
   zones = [],
+  venueLevels = [],
   mode = "viewer", 
   currentUserId = null,
   onZoneClick = null,
@@ -216,15 +224,26 @@ export default function VenueMap({
     return edges;
   }, [volPositions, draggedVol, previewPos, containerSize]);
 
-  // 1. Fetch Venue Levels
+  // 1. Fetch Venue Levels or use provided venueLevels prop
+  useEffect(() => {
+    if (venueLevels && venueLevels.length > 0) {
+      setLevels(venueLevels);
+      if (!selectedLevelId) {
+        setSelectedLevelId(venueLevels[0].id);
+      }
+    }
+  }, [venueLevels]);
+
   useEffect(() => {
     if (!eventId) return;
     api.get(`/api/venue-map/${eventId}/levels`)
       .then((data) => {
         const lvlList = data.levels || [];
-        setLevels(lvlList);
-        if (lvlList.length > 0 && !selectedLevelId) {
-          setSelectedLevelId(lvlList[0].id);
+        if (lvlList.length > 0) {
+          setLevels(lvlList);
+          if (!selectedLevelId) {
+            setSelectedLevelId(lvlList[0].id);
+          }
         }
       })
       .catch(() => {
@@ -288,9 +307,11 @@ export default function VenueMap({
   }, []);
 
   // Compute fallback zones if layout not yet stored
-  const effectiveZones = (serverLayout && serverLayout.length > 0) 
-    ? serverLayout 
-    : computeAutoZoneLayout(zones);
+  const effectiveZones = useMemo(() => {
+    return (serverLayout && serverLayout.length > 0) 
+      ? serverLayout 
+      : computeAutoZoneLayout(zones, levels);
+  }, [serverLayout, zones, levels]);
 
   useEffect(() => {
     if ((mode === "edit-zones" || mode === "create-event" || mode === "organizer") && !editLayout) {
@@ -298,9 +319,78 @@ export default function VenueMap({
     }
   }, [mode, effectiveZones, editLayout]);
 
+  // Keep editLayout updated in create-event mode when zones change
+  useEffect(() => {
+    if (mode === "create-event" && (!editLayout || editLayout.length !== zones.length)) {
+      setEditLayout(computeAutoZoneLayout(zones, levels));
+    }
+  }, [zones, levels, mode]);
+
   const activeLayout = (mode === "edit-zones" || mode === "create-event") ? (editLayout || effectiveZones) : effectiveZones;
 
   const currentLevel = levels.find(l => l.id === selectedLevelId);
+
+  // Filter displayed zones by selected floor level for multi-floor separation
+  const displayedZones = useMemo(() => {
+    if (!selectedLevelId || levels.length <= 1) return activeLayout;
+    const curLevel = levels.find(l => l.id === selectedLevelId);
+    return activeLayout.filter(z => {
+      if (z.level_id) return z.level_id === selectedLevelId;
+      if (z.floor_level !== undefined && curLevel?.level_index !== undefined) {
+        return z.floor_level === curLevel.level_index + 1 || z.floor_level === curLevel.level_index;
+      }
+      return selectedLevelId === levels[0]?.id;
+    });
+  }, [activeLayout, selectedLevelId, levels]);
+
+  const [newZoneName, setNewZoneName] = useState("");
+
+  const handleAddZoneToCurrentFloor = () => {
+    const trimmed = newZoneName.trim();
+    if (!trimmed) return;
+    const curLevel = levels.find(l => l.id === selectedLevelId) || levels[0];
+    const newZ = {
+      zone_id: `user-${Date.now()}`,
+      zone: trimmed,
+      name: trimmed,
+      level_id: curLevel?.id || null,
+      floor_level: curLevel?.level_index !== undefined ? curLevel.level_index + 1 : 1,
+      x: 0.5,
+      y: 0.5,
+      bounds: { left: 0.42, top: 0.44, width: 0.16, height: 0.12 },
+      polygon: [
+        { x: 0.42, y: 0.44 },
+        { x: 0.58, y: 0.44 },
+        { x: 0.58, y: 0.56 },
+        { x: 0.42, y: 0.56 },
+      ]
+    };
+    setEditLayout(prev => [...(prev || effectiveZones), newZ]);
+    setNewZoneName("");
+  };
+
+  const handleReassignZoneFloor = (zoneIndex, targetLevelId) => {
+    const targetLvl = levels.find(l => l.id === targetLevelId);
+    setEditLayout(prev => {
+      const currentList = [...(prev || effectiveZones)];
+      if (currentList[zoneIndex]) {
+        currentList[zoneIndex] = {
+          ...currentList[zoneIndex],
+          level_id: targetLevelId,
+          floor_level: targetLvl?.level_index !== undefined ? targetLvl.level_index + 1 : 1,
+        };
+      }
+      return currentList;
+    });
+  };
+
+  const handleRemoveZone = (zoneIndex) => {
+    setEditLayout(prev => {
+      const currentList = [...(prev || effectiveZones)];
+      currentList.splice(zoneIndex, 1);
+      return currentList;
+    });
+  };
 
   // Save layout
   const handleSaveLayout = async () => {
@@ -312,10 +402,16 @@ export default function VenueMap({
     setSaving(true);
     try {
       const payload = {
-        layout: editLayout.map(z => ({
-          zone_id: z.zone_id || z.id,
-          bounds: z.bounds || { left: z.x - 0.08, top: z.y - 0.06, width: 0.16, height: 0.12 }
-        }))
+        layout: editLayout.map(z => {
+          const curLevel = levels.find(l => l.id === (z.level_id || selectedLevelId));
+          return {
+            zone_id: z.zone_id || z.id,
+            name: z.zone || z.name,
+            level_id: z.level_id || selectedLevelId || null,
+            floor_level: z.floor_level || (curLevel?.level_index !== undefined ? curLevel.level_index + 1 : 1),
+            bounds: z.bounds || { left: z.x - 0.08, top: z.y - 0.06, width: 0.16, height: 0.12 }
+          };
+        })
       };
       await api.post(`/api/venue-map/${eventId}/layout`, payload);
       setServerLayout(editLayout);
@@ -376,8 +472,11 @@ export default function VenueMap({
           width: w,
           height: h
         };
+        const curLvl = levels.find(l => l.id === selectedLevelId);
         next[draggedZoneIndex] = {
           ...item,
+          level_id: selectedLevelId || item.level_id || null,
+          floor_level: curLvl?.level_index !== undefined ? curLvl.level_index + 1 : (item.floor_level || 1),
           x: relX,
           y: relY,
           bounds: newBounds,
@@ -604,6 +703,183 @@ export default function VenueMap({
         </div>
       </div>
 
+      {/* Floor & Zone Allocation Manager (Edit / Create Modes) */}
+      {(mode === "create-event" || mode === "edit-zones") && (
+        <div style={{
+          background: "var(--bg-secondary)",
+          border: "1px solid var(--border-light)",
+          borderRadius: "10px",
+          padding: "14px 16px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "12px"
+        }}>
+          <div style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "10px"
+          }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ fontWeight: "700", fontSize: "0.9rem", color: "var(--text-primary)" }}>
+                  Floor &amp; Zone Allocation
+                </span>
+                {levels.length > 0 && (
+                  <span className="badge badge-primary" style={{ fontSize: "0.75rem", padding: "2px 8px" }}>
+                    Active View: {currentLevel?.name || "All Floors"} ({displayedZones.length} {displayedZones.length === 1 ? "zone" : "zones"})
+                  </span>
+                )}
+              </div>
+              <p style={{ margin: "2px 0 0 0", fontSize: "0.78rem", color: "var(--text-secondary)" }}>
+                Assign zones to their physical floors. Drag centroids on the canvas to reposition.
+              </p>
+            </div>
+
+            {/* Quick Add Zone to Current Floor */}
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <input
+                type="text"
+                placeholder={currentLevel ? `New zone for ${currentLevel.short_code || currentLevel.name}...` : "New zone name..."}
+                value={newZoneName}
+                onChange={(e) => setNewZoneName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAddZoneToCurrentFloor()}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: "6px",
+                  fontSize: "0.82rem",
+                  border: "1px solid var(--border-light)",
+                  background: "var(--bg-primary, #0c1322)",
+                  color: "var(--text-primary)",
+                  minWidth: "220px"
+                }}
+              />
+              <button
+                type="button"
+                className="btn btn-sm btn-primary"
+                onClick={handleAddZoneToCurrentFloor}
+                style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "6px 12px" }}
+              >
+                <LuPlus size={14} /> Add to Floor
+              </button>
+            </div>
+          </div>
+
+          {/* Zones Assignment Grid / Chips */}
+          {activeLayout.length > 0 ? (
+            <div style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "8px",
+              paddingTop: "6px",
+              borderTop: "1px solid rgba(255, 255, 255, 0.06)"
+            }}>
+              {activeLayout.map((z, idx) => {
+                const zName = z.zone || z.name || `Zone ${idx + 1}`;
+                const zLvlId = z.level_id || (levels[0]?.id || null);
+                const assignedLevel = levels.find(l => l.id === zLvlId) || levels[0];
+                const isOnCurrentFloor = !selectedLevelId || zLvlId === selectedLevelId;
+
+                return (
+                  <div
+                    key={z.zone_id || z.id || idx}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      background: isOnCurrentFloor ? "rgba(16, 185, 129, 0.12)" : "rgba(255, 255, 255, 0.04)",
+                      border: `1px solid ${isOnCurrentFloor ? "var(--primary)" : "var(--border-light)"}`,
+                      padding: "4px 10px",
+                      borderRadius: "8px",
+                      fontSize: "0.8rem",
+                      transition: "all 0.15s ease"
+                    }}
+                  >
+                    <span style={{ fontWeight: "600", color: isOnCurrentFloor ? "var(--text-primary)" : "var(--text-muted)" }}>
+                      {zName}
+                    </span>
+
+                    {levels.length > 1 ? (
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: "4px", marginLeft: "4px" }}>
+                        <span style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>Floor:</span>
+                        <select
+                          value={zLvlId || levels[0]?.id}
+                          onChange={(e) => handleReassignZoneFloor(idx, e.target.value)}
+                          style={{
+                            fontSize: "0.74rem",
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            border: "1px solid var(--border-light)",
+                            background: "var(--bg-secondary)",
+                            color: isOnCurrentFloor ? "var(--primary)" : "var(--text-secondary)",
+                            fontWeight: "600",
+                            cursor: "pointer"
+                          }}
+                        >
+                          {levels.map((lvl) => (
+                            <option key={lvl.id} value={lvl.id}>
+                              [{lvl.short_code || `L${lvl.level_index}`}] {lvl.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <span className="badge badge-neutral" style={{ fontSize: "0.7rem", padding: "1px 6px" }}>
+                        [{assignedLevel?.short_code || "L0"}]
+                      </span>
+                    )}
+
+                    {!isOnCurrentFloor && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedLevelId(zLvlId)}
+                        title={`Switch view to ${assignedLevel?.name || "assigned floor"}`}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: "var(--primary)",
+                          fontSize: "0.72rem",
+                          cursor: "pointer",
+                          textDecoration: "underline",
+                          padding: "0 2px"
+                        }}
+                      >
+                        View
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveZone(idx)}
+                      title={`Remove ${zName}`}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "var(--text-muted)",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        padding: "2px",
+                        marginLeft: "2px"
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.color = "var(--error)"}
+                      onMouseLeave={(e) => e.currentTarget.style.color = "var(--text-muted)"}
+                    >
+                      <LuTrash2 size={13} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontStyle: "italic" }}>
+              No zones created yet. Use the input above to add your first zone.
+            </div>
+          )}
+        </div>
+      )}
+
       {/* SVG Canvas Container */}
       <div 
         className="venue-map-container" 
@@ -730,8 +1006,23 @@ export default function VenueMap({
             />
           )}
 
+          {/* Empty floor notice */}
+          {displayedZones.length === 0 && (
+            <g transform={`translate(${containerSize.w / 2}, ${containerSize.h / 2})`}>
+              <circle r="36" fill="rgba(255, 255, 255, 0.03)" stroke="rgba(255, 255, 255, 0.1)" strokeWidth="1" />
+              <text textAnchor="middle" y="-6" fill="var(--text-muted)" fontSize="13" fontWeight="600" fontFamily="Inter, sans-serif">
+                No zones assigned to this floor
+              </text>
+              <text textAnchor="middle" y="16" fill="var(--text-secondary)" fontSize="11" fontFamily="Inter, sans-serif">
+                {(mode === "create-event" || mode === "edit-zones") 
+                  ? "Use 'Add to Floor' above or reassign a zone to this floor"
+                  : "No spatial zones on this level"}
+              </text>
+            </g>
+          )}
+
           {/* Zones Layer (Dynamic Polygon from venue_zones.polygon / bounds) */}
-          {activeLayout.map((zl, i) => {
+          {displayedZones.map((zl, i) => {
             const zName = zl.zone || zl.name || `Zone ${i + 1}`;
             const count = density[zName] || 0;
             const tier = getDensityColor(count);
@@ -762,6 +1053,11 @@ export default function VenueMap({
               strokeColor = "#F59E0B";
             }
 
+            const activeIndex = activeLayout.indexOf(zl);
+            const zoneIndexToUse = activeIndex !== -1 ? activeIndex : i;
+            const zlLevel = levels.find(l => l.id === zl.level_id);
+            const levelLabel = zlLevel ? (zlLevel.short_code || `L${zlLevel.level_index}`) : (zl.floor_level ? `L${zl.floor_level - 1}` : null);
+
             return (
               <g 
                 key={zl.zone_id || zl.id || zName}
@@ -790,23 +1086,39 @@ export default function VenueMap({
                 {/* Zone Label Centroid Card */}
                 <g 
                   transform={`translate(${centroid.x}, ${centroid.y})`}
-                  onPointerDown={(e) => isEdit && handlePointerDownZone(e, i)}
+                  onPointerDown={(e) => isEdit && handlePointerDownZone(e, zoneIndexToUse)}
                   style={{ cursor: isEdit ? "grab" : "default" }}
                 >
                   <rect
-                    x="-48"
-                    y="-20"
-                    width="96"
-                    height="40"
+                    x="-54"
+                    y="-22"
+                    width="108"
+                    height="44"
                     rx="8"
-                    fill="rgba(15, 23, 42, 0.85)"
+                    fill="rgba(15, 23, 42, 0.90)"
                     stroke={strokeColor}
                     strokeWidth="1.2"
                     style={{ backdropFilter: "blur(6px)" }}
                   />
 
+                  {/* Floor Level badge inside card if multiple levels exist */}
+                  {levels.length > 1 && levelLabel && (
+                    <text
+                      y="-7"
+                      textAnchor="middle"
+                      fill="#38BDF8"
+                      fontSize="9"
+                      fontWeight="700"
+                      fontFamily="Inter, sans-serif"
+                      pointerEvents="none"
+                      letterSpacing="0.4px"
+                    >
+                      [{levelLabel}]
+                    </text>
+                  )}
+
                   <text
-                    y="-4"
+                    y={levels.length > 1 && levelLabel ? "6" : "-2"}
                     textAnchor="middle"
                     fill="#F8FAFC"
                     fontSize="11"
@@ -818,10 +1130,10 @@ export default function VenueMap({
                   </text>
 
                   <text
-                    y="11"
+                    y={levels.length > 1 && levelLabel ? "18" : "12"}
                     textAnchor="middle"
                     fill={tier.color}
-                    fontSize="10"
+                    fontSize="9.5"
                     fontWeight="600"
                     fontFamily="Inter, sans-serif"
                     pointerEvents="none"
@@ -831,7 +1143,7 @@ export default function VenueMap({
 
                   {/* Operational status alert badge */}
                   {status && status !== "active" && status !== "open" && (
-                    <circle cx="40" cy="-14" r="5" fill="#EF4444" stroke="#0F172A" strokeWidth="1.5" />
+                    <circle cx="44" cy="-14" r="5" fill="#EF4444" stroke="#0F172A" strokeWidth="1.5" />
                   )}
                 </g>
               </g>

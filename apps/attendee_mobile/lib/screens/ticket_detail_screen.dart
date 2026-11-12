@@ -35,6 +35,16 @@ class TicketDetailScreen extends StatelessWidget {
     final isPurchased = status == 'purchased';
     final isCheckedIn = status == 'checked_in';
 
+    int ticketPrice = 0;
+    if (event != null) {
+      if (event['ticket_price'] is int) {
+        ticketPrice = event['ticket_price'];
+      } else if (event['description'] != null) {
+        final m = RegExp(r'\[TICKET_PRICE:(\d+)\]').firstMatch(event['description'].toString());
+        if (m != null) ticketPrice = int.tryParse(m.group(1)!) ?? 0;
+      }
+    }
+
     final dateTimeStr = SpatiallyDateFormatter.formatDateTime(
       event?['event_start_time'] ?? event?['event_date'],
       includeYear: true,
@@ -69,27 +79,50 @@ class TicketDetailScreen extends StatelessWidget {
               padding: const EdgeInsets.all(SpatiallySpacing.lg),
               child: Column(
                 children: [
-                  // Pass Status Pill
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: isCheckedIn
-                          ? SpatiallyColors.lightTextSecondary.withValues(alpha: 0.12)
-                          : SpatiallyColors.success.withValues(alpha: 0.12),
-                      borderRadius: SpatiallyRadius.borderFull,
-                      border: Border.all(
-                        color: isCheckedIn
-                            ? SpatiallyColors.lightTextSecondary.withValues(alpha: 0.3)
-                            : SpatiallyColors.success.withValues(alpha: 0.3),
-                        width: 1,
+                  // Pass Status Pill & Price
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: isCheckedIn
+                              ? SpatiallyColors.lightTextSecondary.withValues(alpha: 0.12)
+                              : SpatiallyColors.success.withValues(alpha: 0.12),
+                          borderRadius: SpatiallyRadius.borderFull,
+                          border: Border.all(
+                            color: isCheckedIn
+                                ? SpatiallyColors.lightTextSecondary.withValues(alpha: 0.3)
+                                : SpatiallyColors.success.withValues(alpha: 0.3),
+                            width: 1,
+                          ),
+                        ),
+                        child: Text(
+                          isCheckedIn ? 'CHECKED IN' : 'VALID ADMISSION',
+                          style: SpatiallyTypography.badge(
+                            color: isCheckedIn ? SpatiallyColors.lightTextSecondary : SpatiallyColors.success,
+                          ),
+                        ),
                       ),
-                    ),
-                    child: Text(
-                      isCheckedIn ? 'CHECKED IN' : 'VALID ADMISSION',
-                      style: SpatiallyTypography.badge(
-                        color: isCheckedIn ? SpatiallyColors.lightTextSecondary : SpatiallyColors.success,
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: SpatiallyColors.violet.withValues(alpha: 0.12),
+                          borderRadius: SpatiallyRadius.borderFull,
+                          border: Border.all(
+                            color: SpatiallyColors.violet.withValues(alpha: 0.3),
+                            width: 1,
+                          ),
+                        ),
+                        child: Text(
+                          ticketPrice > 0 ? '$ticketPrice PTS' : 'FREE ADMISSION',
+                          style: SpatiallyTypography.badge(
+                            color: SpatiallyColors.violet,
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                   SpatiallySpacing.gapVerticalMd,
 

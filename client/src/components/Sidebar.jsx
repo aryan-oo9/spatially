@@ -14,6 +14,7 @@ import {
   LuMapPin,
   LuTrendingUp,
   LuAward,
+  LuBuilding,
 } from "react-icons/lu";
 
 const navConfig = {
@@ -51,6 +52,7 @@ const navConfig = {
       { path: "/organizer/comms", icon: LuMail, text: "Comms Console" },
     ]},
     { label: "Spatial & Intel", items: [
+      { path: "/organizer/venues", icon: LuBuilding, text: "Venues & Floors" },
       { path: "/organizer/crowd", icon: LuRadar, text: "Live Crowd Feed" },
       { path: "/organizer/map", icon: LuMapPin, text: "Vector Map Hub" },
       { path: "/organizer/zones", icon: LuLayoutDashboard, text: "Zone Capacity Editor" },

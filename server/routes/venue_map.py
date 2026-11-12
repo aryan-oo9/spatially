@@ -24,6 +24,8 @@ class ZoneBoundsUpdate(BaseModel):
     polygon: Optional[List[Any]] = None
     x: Optional[float] = None
     y: Optional[float] = None
+    level_id: Optional[str] = None
+    floor_level: Optional[int] = None
 
 
 class ZoneLayoutBoundsRequest(BaseModel):
@@ -219,6 +221,10 @@ async def save_zone_layout(
         update_payload = {"bounds": bounds}
         if item.polygon:
             update_payload["polygon"] = item.polygon
+        if item.level_id:
+            update_payload["level_id"] = item.level_id
+        if item.floor_level is not None:
+            update_payload["floor_level"] = item.floor_level
 
         if target_id:
             supabase.table("event_zones").update(update_payload).eq("id", target_id).eq("event_id", event_id).execute()
@@ -229,7 +235,8 @@ async def save_zone_layout(
                 "event_id": event_id,
                 "name": name_to_use,
                 "code": (item.code or name_to_use).upper().replace(" ", "_")[:20],
-                "floor_level": 1,
+                "floor_level": item.floor_level if item.floor_level is not None else 1,
+                "level_id": item.level_id or None,
                 "bounds": bounds,
                 "is_crowd_monitored": True,
             }
