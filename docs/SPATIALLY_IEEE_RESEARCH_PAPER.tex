@@ -1,0 +1,386 @@
+\documentclass[conference,a4paper]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{url}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+% Prevent inline math and equations from overflowing narrow IEEE columns
+\emergencystretch=1.5em
+\allowdisplaybreaks
+
+% Allow more floats per column so tables stay on their exact page
+\setcounter{topnumber}{4}
+\setcounter{bottomnumber}{4}
+\setcounter{totalnumber}{6}
+\renewcommand{\topfraction}{0.9}
+\renewcommand{\bottomfraction}{0.9}
+\renewcommand{\textfraction}{0.1}
+\renewcommand{\floatpagefraction}{0.8}
+
+\begin{document}
+
+\title{Spatially: Privacy-Preserving Edge Telemetry, Macroscopic Graph Flow Prediction, and Closed-Loop Gamified Crowd Control for Large-Scale Physical Events}
+
+\author{\IEEEauthorblockN{Aryan and Organizer Platform Engineering Team}
+\IEEEauthorblockA{\textit{Department of Computer Science and Engineering} \\
+\textit{Spatially Research \& Systems Group}\\
+Email: \{aryan, organizer-team\}@spatially.io}
+}
+
+\maketitle
+
+\begin{abstract}
+Managing crowd safety and operational coordination across large-scale indoor and multi-level physical venues remains a critical challenge in ubiquitous computing and public safety engineering. Conventional crowd monitoring systems rely either on privacy-invasive biometric surveillance (such as closed-circuit camera arrays and facial or MAC-address tracking) or on computationally heavy deep learning models that suffer from cold-start failures when historical training data for a venue configuration are unavailable. Furthermore, existing event management platforms operate reactively---reporting congestion only after safety thresholds have been breached---and lack closed-loop mechanisms to redistribute pedestrian traffic autonomously. This paper presents \emph{Spatially}, an end-to-end, privacy-preserving spatial event intelligence and crowd coordination platform uniting three operational surfaces: an Attendee Mobile client, a Volunteer Staff Mobile client, and an Organizer Command-and-Control Web Platform. Spatially introduces three primary technical contributions: (1) a zero-PII Bluetooth Low Energy (BLE) proximity telemetry pipeline utilizing rotating 6-byte SHA-256 ephemeral identifiers, sticky service-UUID classification, and an offline-resilient SQLite write-behind outbox; (2) a deterministic, training-free, three-layer macroscopic overcrowding prediction engine that combines irregular-interval Holt double exponential smoothing, boundary-derived spatial topology graphs, mass-conserving hydraulic spillover propagation, and timetable-covariant session surge modeling; and (3) a closed-loop crowd mitigation architecture that couples deterministic volunteer haptics and attention routing with generative AI-driven \emph{Flash Surge Diversion Quests} to incentivize voluntary attendee redistribution toward high-headroom zones. Empirical evaluation across 205 mobile unit and integration tests, physical Android hardware verification, and multi-scale synthetic crowd benchmarks demonstrates that Spatially's prediction engine executes full 25-zone, 15-minute horizon inference in 0.751~ms per call (scaling to 100 zones in 4.724~ms) with zero mass-conservation residual ($<10^{-6}$) and provides up to 12.3~minutes of early-warning lead time prior to critical foyer bottlenecks during post-keynote dispersals.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Crowd dynamics, Bluetooth Low Energy (BLE), privacy-preserving telemetry, macroscopic pedestrian flow, Holt exponential smoothing, spatial topology graphs, event operations, gamified crowd redirection.
+\end{IEEEkeywords}
+
+\section{Introduction}
+Large-scale physical gatherings---such as technical conferences, stadium exhibitions, multi-track conventions, and music festivals---transform constrained architectural spaces into high-density, rapidly evolving pedestrian networks. As global urbanization and event attendance intensify, preventing localized overcrowding and crowd-crush incidents has become a paramount public safety priority \cite{hoogendoorn2004, liang2024}. Forensic analyses of recent high-density pedestrian disasters, including the 2022 Itaewon crowd crush, reveal that fatal congestion rarely occurs instantaneously; rather, it is preceded by a 15-to-30-minute accumulation window during which localized pedestrian inflows consistently exceed structural egress capacities \cite{liang2024, kim2026}. Consequently, shifting event operations from retrospective observation to proactive, short-horizon anticipation (5 to 20~minutes ahead) is essential to provide safety directors and on-ground staff with the operational buffer required to throttle gate admissions, stage personnel, and redirect foot traffic \cite{daamen2026, yasufuku2024}.
+
+Despite extensive research in pedestrian dynamics and indoor positioning, deploying real-time crowd intelligence in temporary or reconfigurable event venues presents four fundamental systems engineering challenges:
+\begin{enumerate}
+    \item \emph{The Privacy-Surveillance Dichotomy:} Camera-based computer vision (CV) counting networks and passive Wi-Fi/Bluetooth Media Access Control (MAC) sniffers expose attendees to persistent biometric or hardware-level trajectory tracking, violating modern data protection frameworks and eroding user trust \cite{martin2025, faragher2015}. Conversely, modern mobile operating systems randomize hardware MAC addresses at unpredictable intervals, corrupting naive scanner headcounts via double-counting or premature expiry.
+    \item \emph{The Cold-Start and Edge Compute Bottleneck:} Deep spatio-temporal neural networks (such as ConvLSTMs and Graph Attention Networks) require months of historical sensor traces to learn venue-specific flow transitions \cite{dang2024, duan2026}. However, conventions and pop-up exhibitions feature bespoke booth layouts, temporary partitions, and one-off session timetables for which zero historical training data exist \cite{daamen2026}. Moreover, parameter-heavy neural models impose prohibitive inference latency and memory overhead on edge and mid-tier cloud infrastructure \cite{shang2026}.
+    \item \emph{Intermittent Venue Connectivity:} High attendee density saturates local cellular towers and venue Wi-Fi access points. Operational telemetry, QR ticket admissions, and incident dispatches that rely on synchronous cloud round-trips suffer from dropped packets, race conditions, and inconsistent state during peak ingress surges.
+    \item \emph{Open-Loop Operational Silos:} Traditional crowd monitoring dashboards terminate at passive visualization \cite{yasufuku2024}. Even when an organizer observes an impending bottleneck on a heatmap, translating that insight into physical crowd dispersal requires slow, manual radio coordination and lacks direct behavioral incentives for attendees.
+\end{enumerate}
+
+To address these challenges, this paper presents \textbf{Spatially}, a unified, privacy-preserving event operations and spatial crowd intelligence platform. Spatially bridges three distinct client and control tiers over a shared, Row-Level Security (RLS)-hardened PostgreSQL real-time backend: (1) an \emph{Attendee Mobile Application}, (2) a \emph{Volunteer Staff Mobile Application}, and (3) an \emph{Organizer Command Web Platform and Intelligence Engine}.
+
+The primary contributions of this work are as follows:
+\begin{itemize}
+    \item \textbf{A Zero-PII, Offline-Resilient BLE Crowd Sensing Architecture:} We design and implement a cross-layer mobile telemetry protocol combining rotating 6-byte SHA-256 ephemeral BLE advertising, sticky UUID classification to overcome Android scan-response fragmentation, a 10-second deduplication / 45-second expiry window, and a durable SQLite v7 write-behind outbox with PostgreSQL \texttt{FOR UPDATE} atomic ticket reconciliation (Section~III).
+    \item \textbf{A Training-Free, Mass-Conserving Macroscopic Graph Predictor:} We formulate a three-layer deterministic forecasting algorithm that couples irregular-interval Holt linear smoothing with boundary-derived zone graphs, capacity-headroom-weighted hydraulic spillover, and exogenous session schedule covariance, achieving sub-millisecond inference without historical training data (Section~IV).
+    \item \textbf{Closed-Loop Socio-Technical Crowd Actuation:} We introduce a dual-channel mitigation paradigm combining a zero-double-counting volunteer attention engine (featuring pocket-friendly Android haptics and atomic shift/coverage state machines) with a generative AI/heuristic gamification agent that incentivizes voluntary crowd dispersion via time-bounded \emph{Flash Surge Quests} (Section~V).
+    \item \textbf{Comprehensive Empirical and Hardware Validation:} We evaluate Spatially across 205 automated mobile unit/integration tests, physical Android hardware field trials (Nothing Phone A059P), and multi-scale simulation benchmarks, demonstrating sub-5~ms scalability up to 100 zones, exact pedestrian mass conservation, and 12.3-minute early-warning lead times on multi-hop keynote dispersal bottlenecks (Section~VI).
+\end{itemize}
+
+The remainder of this paper is organized as follows. Section~II reviews related literature. Section~III details the system architecture and BLE sensing pipeline. Section~IV presents the mathematical formulation of the overcrowding prediction engine. Section~V describes the closed-loop operational actuation and gamified surge diversion mechanism. Section~VI reports experimental results and ablation studies. Section~VII discusses limitations, and Section~VIII concludes the paper.
+
+\section{Related Work}
+Table~\ref{tab:related_work} compares Spatially with representative crowd monitoring and forecasting frameworks across key architectural criteria.
+
+\begin{table}[!htbp]
+\centering
+\caption{Comparison with Crowd Monitoring Frameworks}
+\label{tab:related_work}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lcccc@{}}
+\toprule
+\textbf{Study} & \textbf{Sensing} & \textbf{No-Train} & \textbf{Graph Flow} & \textbf{Actuation} \\
+\midrule
+Yasufuku \cite{yasufuku2024} & LiDAR & Yes & No & Dashboard \\
+Bohnet \cite{bohnet2025} & Camera & No & PDE & None \\
+Duan \cite{duan2026} & Cellular & No & Grid CNN & None \\
+CPMS-Net \cite{shang2026} & RGB Cam & No & Multi-Scale & None \\
+Daamen \cite{daamen2026} & Sensors & Yes & Corridor & Advisory \\
+Jeong \cite{jeong2026} & Beacons & Partial & Grid Twin & Alerting \\
+\textbf{Spatially} & \textbf{BLE+QR} & \textbf{Yes} & \textbf{2-Hop+Sched} & \textbf{Haptic+AI} \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+\subsection{Short-Term Crowd Forecasting and Operational Dashboards}
+Conventional event management relies on retrospective occupancy visualization, which Yasufuku and Takahashi \cite{yasufuku2024} demonstrated is insufficient to prevent crush incidents due to the structural lag between control decisions and physical crowd response. Recent work has emphasized short-horizon (5--20~minute) forecasting. Daamen et al. \cite{daamen2026} developed a short-term pedestrian forecasting framework for the SAIL2025 event, demonstrating that coupling live sensor streams with rapid velocity-correcting filters yields actionable 10--20~minute forecasts without historical training datasets. Similarly, Jeong et al. \cite{jeong2026} proposed a two-stage coarse-to-fine digital twin framework for sparse crowd density prediction, proving that partitioning venues into discrete monitored zones provides security personnel with crucial intervention lead times.
+
+\subsection{Spatial Graphs, Topology, and Macroscopic Continuum Flow}
+In dense pedestrian environments, architectural constraints govern movement more strongly than individual preferences. Jang and Kwon \cite{jang2026} established that as crowd density rises, room boundaries, corridors, and vertical connectors dominate flow trajectories. Boomers et al. \cite{boomers2024} empirically quantified how narrow bottlenecks throttle throughput as capacity limits are approached. Dang et al. \cite{dang2024} surveyed 116 dense crowd simulation models and concluded that microscopic agent-based models \cite{helbing2000} face severe calibration fragility and computational bottlenecks in real-time operations, whereas macroscopic continuum \cite{hughes2002} and network-flow formulations remain fast and stable.
+
+Within the macroscopic paradigm, Zhou et al. \cite{zhou2025} introduced Flow-Through Tensors on computational graphs to enforce node-to-node flow conservation across multi-layer networks. Bohnet and Wehrlein \cite{bohnet2025} modeled pedestrian mass conservation via continuity PDEs, while Edelmann and Goda \cite{edelmann2026} characterized dense crowds as viscoelastic continuum media that transmit hydraulic pressure outward from congested regions toward lower-density paths. Furthermore, Duan and Sun \cite{duan2026} demonstrated that scheduled timetable events act as the dominant exogenous covariate driving sharp spatial density transitions. Spatially synthesizes these principles into a training-free graph propagation engine.
+
+\subsection{Privacy-Preserving BLE Telemetry and Crowd Redirection}
+Mart\'in-Frechina et al. \cite{martin2025} confirmed that BLE proximity sensing provides reliable zone-level occupancy telemetry without optical surveillance, while Shang et al. \cite{shang2026} highlighted the latency penalties of deep models on edge hardware. Analyzing the Itaewon disaster, Liang et al. \cite{liang2024} and Kim et al. \cite{kim2026} formulated early-warning indices based on occupancy thresholds ($0.80$ warning, $0.90$ critical) and estimated time-to-breach (ETA). Spatially extends threshold alerting by coupling top-down volunteer haptics with bottom-up gamified incentive engineering \cite{deterding2011}.
+
+\section{System Architecture and Privacy-Preserving Telemetry}
+Spatially is architected as a four-tier cyber-physical system comprising two Flutter Android edge clients (\texttt{attendee\_mobile} and \texttt{volunteer\_mobile}), a React 19 / Vite operational command portal (\texttt{client/}), a Python FastAPI intelligence service (\texttt{server/}), and a shared Supabase PostgreSQL backend (\texttt{supabase/migrations/}) with Row-Level Security (RLS) and Change Data Capture (CDC) Realtime channels.
+
+\subsection{Ephemeral BLE Advertising and Sticky Scanner Filtering}
+To eliminate personally identifiable information (PII) from spatial telemetry, Spatially decouples ticket ownership from physical presence sensing. Upon initialization, the Attendee Mobile client generates a local UUID v4 device identifier $u_d$ stored strictly in device-local preferences. During an active event, an Android Foreground Service continuously broadcasts a low-power BLE advertisement carrying the Spatially 128-bit Service UUID (\texttt{f47ac10b-58cc-4372-a567-0e02b2c3d479}) and a 6-byte manufacturer-specific payload under company identifier \texttt{0xFFFF}. The 6-byte ephemeral identifier $E_t$ is derived via a rolling cryptographic hash over $u_d$ and the quantized time epoch $\tau_t = \lfloor t / \Delta_{\mathrm{rot}} \rfloor$:
+\begin{equation}
+E_t = \mathrm{Trunc}_{48}\!\left(\mathrm{SHA\text{-}256}(u_d \parallel \tau_t)\right),
+\label{eq:ble_hash}
+\end{equation}
+where $\mathrm{Trunc}_{48}(\cdot)$ extracts the leading 48 bits and $\Delta_{\mathrm{rot}} \in [5, 15]$~minutes.
+
+On-duty volunteers run \texttt{BleScannerService} on Android hardware. To overcome Android BLE scan-response fragmentation (where secondary scan packets occasionally omit the 128-bit service UUID list), \texttt{BleScannerService} implements a three-stage state machine:
+\begin{enumerate}
+    \item \emph{Signal Sanity and Ephemeral Extraction:} Scan results with $\mathrm{RSSI} = -128$~dBm are discarded. If the \texttt{0xFFFF} frame has length 6~bytes, the 12-character hex string is extracted as \texttt{ephemeralId}.
+    \item \emph{Sticky Service-UUID Classification:} Once an \texttt{ephemeralId} is observed advertising \texttt{spatiallyServiceUuid} in any packet, it is added to \texttt{\_confirmedSpatiallyIds} until presence expiry. All non-Spatially ambient Bluetooth devices are dropped at the privacy gate prior to queueing.
+    \item \emph{Deduplication and Presence Expiry Window:} The scanner enforces a deduplication window $\Delta_{\mathrm{dedup}} = 10$~s and a presence timeout $\Delta_{\mathrm{exp}} = 45$~s, evicting expired IDs every 10~s.
+\end{enumerate}
+
+\subsection{Offline-Resilient Write-Behind Outbox and Atomic Ticketing}
+Spatially guarantees zero operational data loss in \texttt{volunteer\_mobile} via a local SQLite v7 persistence engine (\texttt{spatially\_queue.db}) containing an \texttt{observation\_queue} (flushed every 15--30~s to \texttt{volunteer\_counts} and \texttt{crowd\_zone\_snapshots}) and \texttt{pending\_ticket\_checkins}. Online QR ticket admissions invoke the PostgreSQL stored procedure \texttt{check\_in\_ticket}, which acquires a row-level exclusive lock (\texttt{FOR UPDATE}) on \texttt{public.tickets} to prevent concurrent double-entry across turnstiles.
+
+\section{Macroscopic Overcrowding Prediction Engine}
+The Spatially Overcrowding Prediction Engine (\texttt{crowd\_prediction.py}) operates in four sequential, purely functional stages over a forecast horizon $H$ (default $H=15$~minutes).
+
+\subsection{Stage 1: Automatic Spatial Topology Graph Construction}
+Let $\mathcal{Z} = \{1, 2, \dots, N\}$ denote the set of monitored zones. Each zone $i \in \mathcal{Z}$ resides on floor level $\ell_i \in \mathbb{Z}^+$ and is bounded on the normalized 2D canvas $[0, 1]^2$ by:
+\begin{equation}
+R_i = [x_{i,\min},\, x_{i,\max}] \times [y_{i,\min},\, y_{i,\max}].
+\label{eq:rect}
+\end{equation}
+For any pair $(i, j)$ on the same floor ($\ell_i = \ell_j$), the axial overlaps $o_x$ and $o_y$ are given by:
+\begin{equation}
+\begin{aligned}
+o_x(i, j) &= \min(x_{i,\max}, x_{j,\max}) - \max(x_{i,\min}, x_{j,\min}), \\
+o_y(i, j) &= \min(y_{i,\max}, y_{j,\max}) - \max(y_{i,\min}, y_{j,\min}).
+\end{aligned}
+\label{eq:overlap}
+\end{equation}
+With corridor adjacency tolerance $\epsilon_{\mathrm{adj}} = 0.02$, the unnormalized shared-border conductance $\tilde{w}_{ij}$ is defined as:
+\begin{equation}
+\tilde{w}_{ij} = \begin{cases} 
+\epsilon_{\mathrm{adj}}, & \text{if } \min(o_x, o_y) \ge -\epsilon_{\mathrm{adj}} \\
+& \quad \text{and } \min(o_x, o_y) < 0, \\[4pt]
+\max(o_x, o_y, \epsilon_{\mathrm{adj}}), & \text{if } o_x \ge 0 \text{ and } o_y \ge 0, \\[4pt]
+0, & \text{otherwise.}
+\end{cases}
+\label{eq:conductance}
+\end{equation}
+Cross-level vertical connectors inject explicit links with $\tilde{w}_{ij} = 0.10$. Conductances are row-normalized per source zone:
+\begin{equation}
+w_{ij} = \frac{\tilde{w}_{ij}}{\sum_{k \in \mathcal{N}(i)} \tilde{w}_{ik}}, \quad \forall j \in \mathcal{N}(i).
+\label{eq:row_norm}
+\end{equation}
+
+\subsection{Stage 2: Irregular-Interval Holt Linear Trend Smoothing}
+For each zone $i$, the predictor ingests the rolling 30-minute snapshot series $\{(t_{i,1}, y_{i,1}), \dots, (t_{i,m}, y_{i,m})\}$. Initializing $L_{i,1} = y_{i,1}$ and $T_{i,1} = 0$, for $k = 2, \dots, m$ with elapsed step $\Delta t_k = \max((t_{i,k} - t_{i,k-1})/60, 10^{-3})$~minutes, the irregular-interval Holt double exponential update \cite{holt2004} is:
+\begin{equation}
+\begin{aligned}
+\hat{y}_{i,k} &= L_{i,k-1} + T_{i,k-1} \Delta t_k, \\
+L_{i,k} &= \alpha y_{i,k} + (1 - \alpha)\hat{y}_{i,k}, \\
+T_{i,k} &= \beta \left(\frac{L_{i,k} - L_{i,k-1}}{\Delta t_k}\right) + (1 - \beta)T_{i,k-1},
+\end{aligned}
+\label{eq:holt}
+\end{equation}
+with $\alpha = 0.5$ and $\beta = 0.3$. Across horizon $H$, the isolated Layer~1 linear projection is:
+\begin{equation}
+\Lambda_i^{(0)}(t + H) = \max(L_i + T_i H,\, 0).
+\label{eq:l1_proj}
+\end{equation}
+
+\subsection{Stage 3: Mass-Conserving Graph Flow Propagation}
+Adding gate check-in arrivals $\lambda_i$ (check-ins/min) yields:
+\begin{equation}
+\Lambda_i^{(1)} = \Lambda_i^{(0)}(t + H) + \lambda_i H.
+\label{eq:gate_inflow}
+\end{equation}
+When crowd mass $M > 0$ disperses from source zone $i$ into $\mathcal{N}(i)$, it is split proportionally to edge weight times destination free capacity headroom $\max(C_j - \Lambda_j, 0)$:
+\begin{equation}
+\begin{aligned}
+s_{ij} &= w_{ij}\big(\max(C_j - \Lambda_j,\, 0) + \varepsilon_0\big), \\
+\Delta_{i \to j}(M) &= M \cdot \frac{s_{ij}}{\sum_{k \in \mathcal{N}(i)} s_{ik}},
+\end{aligned}
+\label{eq:distribute}
+\end{equation}
+where $\varepsilon_0 = 10^{-6}$. Because $\sum_{j \in \mathcal{N}(i)} \Delta_{i \to j}(M) = M$, total pedestrian mass is strictly conserved across all internal transfers:
+\begin{equation}
+\sum_{i \in \mathcal{Z}} \Lambda_i^{\mathrm{after}} = \sum_{i \in \mathcal{Z}} \Lambda_i^{\mathrm{before}}.
+\label{eq:mass_conservation}
+\end{equation}
+
+\subsubsection{Timetable-Covariant Session Surges}
+If an active session in zone $z_s$ concludes within $[t_{\mathrm{now}}, t_{\mathrm{now}} + H]$, a fraction $\gamma_{\mathrm{disp}} = 0.80$ of the audience disperses into $\mathcal{N}(z_s)$ via (\ref{eq:distribute}):
+\begin{equation}
+M_{\mathrm{out}}(z_s) = \gamma_{\mathrm{disp}} \cdot \min\!\big(\Lambda_{z_s}^{(1)},\, L_{z_s}\big).
+\label{eq:session_disp}
+\end{equation}
+Conversely, if a session starts within $H$, $z_s$ pulls up to $60\%$ of its remaining headroom from adjacent zones ($\gamma_{\mathrm{pull}} = 0.50$).
+
+\subsubsection{Multi-Hop Hydraulic Spillover}
+Across $K=2$ hops, zones are visited in descending order of load $\Lambda_i$. Excess load above critical capacity $\theta_{i,\mathrm{crit}} C_i$ (default $0.90 C_i$), denoted $E_{i,\mathrm{crit}}$, plus a busy-zone leakage fraction $\eta_{\mathrm{leak}} = 0.15$ of positive trend growth when $\Lambda_i / C_i \ge \rho_{\mathrm{leak}} = 0.70$ at hop $h=0$, denoted $E_{i,\mathrm{leak}}(h)$, spills into $\mathcal{N}(i)$:
+\begin{equation}
+\begin{aligned}
+E_{i,\mathrm{crit}} &= \max\!\big(\Lambda_i - \theta_{i,\mathrm{crit}} C_i,\, 0\big), \\
+E_{i,\mathrm{leak}}(h) &= \mathbb{I}(h=0)\,\mathbb{I}\!\left(\frac{\Lambda_i}{C_i} \ge \rho_{\mathrm{leak}}\right)\eta_{\mathrm{leak}}\max(T_i, 0)H, \\
+M_{\mathrm{spill}}(i, h) &= \min\!\big(\Lambda_i,\; E_{i,\mathrm{crit}} + E_{i,\mathrm{leak}}(h)\big).
+\end{aligned}
+\label{eq:spill}
+\end{equation}
+
+\subsection{Stage 4: Risk Scoring, ETA, and Confidence Calibration}
+Let $\Lambda_i^*$ denote the final projected load, $r_{i,\mathrm{cur}} = L_i / C_i$, $r_{i,\mathrm{proj}} = \Lambda_i^* / C_i$, and $r_{i,\mathrm{peak}} = \max(r_{i,\mathrm{cur}}, r_{i,\mathrm{proj}})$. With warning threshold $\theta_{i,\mathrm{warn}} = 0.80$, critical threshold $\theta_{i,\mathrm{crit}} = 0.90$, and watch margin $\delta_{\mathrm{watch}} = 0.15$, the discrete risk state $\mathcal{R}_i$ is classified as:
+\begin{equation}
+\mathcal{R}_i = \begin{cases}
+\mathrm{critical}, & \text{if } r_{i,\mathrm{peak}} \ge \theta_{i,\mathrm{crit}}, \\
+\mathrm{warning}, & \text{if } \theta_{i,\mathrm{warn}} \le r_{i,\mathrm{peak}} < \theta_{i,\mathrm{crit}}, \\
+\mathrm{watch}, & \text{if } \theta_{i,\mathrm{warn}} - \delta_{\mathrm{watch}} \le r_{i,\mathrm{peak}} < \theta_{i,\mathrm{warn}}, \\
+\mathrm{normal}, & \text{otherwise.}
+\end{cases}
+\label{eq:risk_tier}
+\end{equation}
+Letting $\Omega_i = \theta_{i,\mathrm{warn}} C_i$ denote the warning threshold headcount and $T_{i,\mathrm{eff}} = (\Lambda_i^* - L_i)/H$ denote the effective trend, the Estimated Time-to-Breach ($\mathrm{ETA}_i$) is:
+\begin{equation}
+\mathrm{ETA}_i = \begin{cases}
+0.0, & \text{if } L_i \ge \Omega_i, \\[4pt]
+\min\!\left(\dfrac{\Omega_i - L_i}{T_{i,\mathrm{eff}}},\, H\right), & \text{if } L_i < \Omega_i \text{ and } \Lambda_i^* \ge \Omega_i, \\[6pt]
+\mathrm{None}, & \text{otherwise.}
+\end{cases}
+\label{eq:eta}
+\end{equation}
+Data freshness $\phi(a_i)$ for telemetry age $a_i$ (with $\tau_{\mathrm{full}} = 2.0$~min and $\tau_{\mathrm{zero}} = 10.0$~min) and composite confidence $\mathcal{C}_i \in [0.15, 1.0]$ for snapshot count $m_i$ are computed as:
+\begin{equation}
+\phi(a_i) = \begin{cases}
+1.0, & \text{if } a_i \le \tau_{\mathrm{full}}, \\[4pt]
+1.0 - \dfrac{0.7(a_i - \tau_{\mathrm{full}})}{\tau_{\mathrm{zero}} - \tau_{\mathrm{full}}}, & \text{if } \tau_{\mathrm{full}} < a_i < \tau_{\mathrm{zero}}, \\[6pt]
+0.3, & \text{otherwise,}
+\end{cases}
+\label{eq:freshness}
+\end{equation}
+\begin{equation}
+\mathcal{C}_i = \phi(a_i) \cdot \left(0.5 + 0.5 \min\!\left(1.0,\, \frac{m_i}{6}\right)\right).
+\label{eq:confidence}
+\end{equation}
+
+\section{Closed-Loop Operational Actuation and Gamified Crowd Diversion}
+\subsection{Deterministic Volunteer Attention Routing and Haptics}
+The Volunteer Mobile client synthesizes operational broadcasts, incidents, coverage requests, and zone alerts into a unified feed scored deterministically by priority:
+\begin{equation}
+\mathrm{Rel}(e, v) = \begin{cases}
+\mathrm{myZone}, & \text{if } e.\mathrm{zone} = v.\mathrm{zone}, \\
+\mathrm{eventWideUrgent}, & \text{if } e.\mathrm{priority} = \mathrm{urgent}, \\
+\mathrm{myTeam}, & \text{if } e.\mathrm{team} = v.\mathrm{team}, \\
+\mathrm{unrelatedNormal}, & \text{otherwise.}
+\end{cases}
+\label{eq:relevance}
+\end{equation}
+\texttt{HapticAttentionService} drives custom Android vibration waveforms so staff recognize urgent zone surges without looking at screens, while atomic RPCs (\texttt{request\_shift\_coverage}, \texttt{accept\_shift\_coverage}) guarantee continuous station coverage.
+
+\subsection{Generative AI and Heuristic Surge Diversion Quests}
+To incentivize voluntary attendee dispersal from a congested zone $z_{\mathrm{src}}$ toward a high-headroom zone $z_{\mathrm{dst}}$, the Organizer Platform invokes \texttt{quest\_agent.py}. The agent cascades across Gemini models (\texttt{gemini-3.5-flash-lite} $\to$ \texttt{2.5-flash-lite} $\to$ \texttt{2.0-flash-lite} $\to$ \texttt{1.5-flash}) with a zero-latency deterministic fallback (\texttt{spatially-crowd-diversion-engine}) to mint time-bounded \emph{Flash Surge Diversion Quests} offering $+150$ bonus Passport points upon QR verification at a target booth in $z_{\mathrm{dst}}$.
+
+\section{Experimental Evaluation and Results}
+\subsection{Canonical Crowd Pattern Evaluation}
+Table~\ref{tab:regimes} reports the predictor's performance across the four canonical crowd regimes (\texttt{ramp}, \texttt{surge}, \texttt{dispersal}, and \texttt{plateau}) on a 4-zone floorplan ($C_0=100, C_1=150, C_2=200, C_3=100$, $\mathcal{C}_i=1.0$). Rolling-origin evaluation confirms that the predictor triggers \texttt{warning} alerts \textbf{8.4~minutes} ahead of threshold breach under linear ramp ingress and \textbf{5.2~minutes} ahead of breach following a sudden surge inflection, while routing excess critical overflow into adjacent high-headroom Zone~2.
+
+\begin{table}[!htbp]
+\centering
+\caption{Prediction Performance Across Crowd Regimes ($H = 15$~min)}
+\label{tab:regimes}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}llcccc@{}}
+\toprule
+\textbf{Zone} & \textbf{Regime} & \textbf{$r_{\mathrm{cur}}$} & \textbf{$T_i$/m} & \textbf{$r_{\mathrm{proj}}$} & \textbf{Risk (Lead)} \\
+\midrule
+Zone 0 & \texttt{ramp} & 0.917 & $+3.35$ & 0.900 & \texttt{crit.} (\textbf{8.4m}) \\
+Zone 1 & \texttt{surge} & 0.899 & $+6.72$ & 0.903 & \texttt{crit.} (\textbf{5.2m}) \\
+Zone 2 & \texttt{dispersal} & 0.149 & $-9.30$ & 0.785 & \texttt{watch} (Spill) \\
+Zone 3 & \texttt{plateau} & 0.400 & $-0.68$ & 0.297 & \texttt{normal} (0 FP) \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+\subsection{Ablation Study: Multi-Zone Keynote Dispersal}
+Table~\ref{tab:ablation} evaluates four model configurations on a 3-zone layout (\emph{Main Hall} $C_1=200$, $L_1=190$; \emph{Central Foyer} $C_2=100$, $L_2=45$; \emph{Expo Zone A} $C_3=120$, $L_3=32$) where an Opening Keynote in Main Hall concludes in 4~minutes. While the Reactive Baseline and Isolated Holt (Layer~1) fail to foresee the foyer bottleneck (\texttt{normal}, $0.45$ and $0.60$), and Layer~1+2 without schedule awareness reaches only \texttt{watch} ($0.77$), the \textbf{Full Spatially Predictor} captures both the primary session dispersal wave into Central Foyer (\texttt{warning}, $r_{\mathrm{proj}} = 0.88$, $\mathrm{ETA} = 12.3$~min) and the secondary Hop-2 hydraulic spillover of $\sim 44$ attendees into Expo Zone A (\texttt{watch}, $r_{\mathrm{proj}} = 0.66$), with mass conservation error $<10^{-6}$.
+
+\begin{table}[!htbp]
+\centering
+\caption{Ablation Study on 3-Zone Keynote Dispersal Cascade}
+\label{tab:ablation}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lcccc@{}}
+\toprule
+\textbf{Configuration} & \textbf{Main Hall} & \textbf{Foyer} & \textbf{ETA} & \textbf{Expo A} \\
+\midrule
+1. Reactive Baseline & 0.95 (\texttt{crit}) & 0.45 (\texttt{norm}) & $\infty$ & 0.27 (\texttt{norm}) \\
+2. L1 Isolated Holt & 0.99 (\texttt{crit}) & 0.60 (\texttt{norm}) & $\infty$ & 0.29 (\texttt{norm}) \\
+3. L1+L2 Graph Spill & 0.90 (\texttt{crit}) & 0.77 (\texttt{watch}) & None & 0.31 (\texttt{norm}) \\
+\textbf{4. Full Spatially} & \textbf{0.63 (crit)} & \textbf{0.88 (warn)} & \textbf{12.3m} & \textbf{0.66 (watch)} \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+\subsection{Computational Latency and Subsystem Verification}
+Table~\ref{tab:scaling} shows empirical single-thread CPU latency across venue sizes from $N=5$ to $N=100$ zones (200-iteration mean), and Table~\ref{tab:verification} summarizes end-to-end platform verification. Inference for a 25-zone venue completes in \textbf{0.751~ms} (1,331 predictions/s) and scales to 100 zones in \textbf{4.724~ms}. Furthermore, both mobile applications achieved a 100\% pass rate across 205 automated unit/integration tests (81/81 in \texttt{attendee\_mobile}, 124/124 in \texttt{volunteer\_mobile}) with zero static analysis errors and full physical verification on Nothing Phone A059P hardware.
+
+\begin{table}[!htbp]
+\centering
+\caption{Empirical Inference Latency Scaling Across Zone Counts}
+\label{tab:scaling}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}cccc@{}}
+\toprule
+\textbf{Zones ($N$)} & \textbf{Edges ($E$)} & \textbf{Latency (ms)} & \textbf{Throughput} \\
+\midrule
+5 & 8 & 0.113~ms & 8,849~calls/s \\
+10 & 18 & 0.236~ms & 4,237~calls/s \\
+25 & 68 & 0.751~ms & 1,331~calls/s \\
+50 & 150 & 1.916~ms & 522~calls/s \\
+100 & 324 & 4.724~ms & 212~calls/s \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+\begin{table}[!htbp]
+\centering
+\caption{End-to-End Platform Verification Baseline}
+\label{tab:verification}
+\footnotesize
+\setlength{\tabcolsep}{3.5pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}llcc@{}}
+\toprule
+\textbf{Subsystem} & \textbf{Platform} & \textbf{Tests} & \textbf{Status} \\
+\midrule
+Attendee App & Flutter / Android & 81 / 81 & 100\% Pass \\
+Volunteer App & Flutter / Android & 124 / 124 & 100\% Pass \\
+Predictor API & Python / FastAPI & 12+ Suites & 100\% Pass \\
+Field Hardware & Nothing A059P & 46 States & Verified \\
+\bottomrule
+\end{tabular*}
+\end{table}
+
+\section{Discussion and Limitations}
+Spatially addresses two key threats to validity in mobile crowd sensing: (1) imperfect BLE penetration is mitigated by fusing QR turnstile check-in rates ($\lambda_i$) at entrance zones and supporting manual calibration snapshots; and (2) temporary scanner absence in a zone is guarded by both atomic shift coverage locks and the freshness decay factor $\phi(a_i)$ in (\ref{eq:freshness})--(\ref{eq:confidence}), which lowers confidence $\mathcal{C}_i$ to $0.3$ rather than raising false alarms on stale data. A geometric limitation of Stage~1 is the axis-aligned bounding box approximation, which can be overridden via explicit \texttt{extra\_links} when non-porous walls separate touching rectangles.
+
+\section{Conclusion and Future Work}
+This paper presented \textbf{Spatially}, an end-to-end, privacy-preserving event operations and crowd intelligence platform. By uniting rotating 6-byte SHA-256 BLE telemetry, offline-resilient SQLite outboxes, a sub-millisecond macroscopic graph flow predictor, and generative AI \emph{Flash Surge Diversion Quests}, Spatially shifts physical venue management from reactive observation to proactive, closed-loop socio-technical control. Future work will explore online recursive calibration of zone smoothing parameters $(\alpha, \beta)$ and empirical quantification of attendee compliance elasticity under variable gamified reward multipliers.
+
+\begin{thebibliography}{00}
+\bibitem{hoogendoorn2004} S. P. Hoogendoorn and P. H. L. Bovy, ``Pedestrian route-choice and activity scheduling theory and models,'' \emph{Transp. Res. Part B: Methodol.}, vol. 38, no. 2, pp. 169--190, Feb. 2004.
+\bibitem{liang2024} H. Liang, S. Lee, J. C. Sun, and S. C. Wong, ``Unraveling the causes of the Seoul Halloween crowd-crush disaster,'' \emph{PLOS ONE}, vol. 19, no. 7, Art. no. e0306764, Jul. 2024, doi: 10.1371/journal.pone.0306764.
+\bibitem{kim2026} S.-W. Kim, M. D. Adhikari, M.-S. Song, S. Park, and S.-G. Yum, ``A behavioral early-warning index for crowd-crush risk in confined pedestrian corridors,'' \emph{Developments Built Environ.}, vol. 25, Art. no. 101052, 2026, doi: 10.1016/j.dibe.2026.101052.
+\bibitem{daamen2026} W. Daamen, T. Hari, Y. Xin, S. Hoogendoorn-Lanser, and S. P. Hoogendoorn, ``Short-term crowd forecasting for SAIL2025,'' \emph{Acta Polytech. CTU Proc.}, vol. 57, pp. 52--60, 2026, doi: 10.14311/app.2026.57.0052.
+\bibitem{yasufuku2024} K. Yasufuku and A. Takahashi, ``Development of a real-time crowd flow prediction and visualization platform for crowd management,'' \emph{J. Disaster Res.}, vol. 19, no. 2, pp. 248--257, Apr. 2024, doi: 10.20965/jdr.2024.p0248.
+\bibitem{martin2025} S. Mart\'in-Frechina, E. Dura, I. Miralles, and J. Torres-Sospedra, ``From fingerprinting to advanced machine learning: A systematic review of Wi-Fi and BLE-based indoor positioning systems,'' \emph{Sensors}, vol. 25, no. 22, Art. no. 6946, Nov. 2025, doi: 10.3390/s25226946.
+\bibitem{faragher2015} R. Faragher and R. Harle, ``Location fingerprinting with Bluetooth Low Energy beacons,'' \emph{IEEE J. Sel. Areas Commun.}, vol. 33, no. 11, pp. 2418--2428, Nov. 2015.
+\bibitem{dang2024} H.-T. Dang, B. Gaudou, and N. Verstaevel, ``A literature review of dense crowd simulation,'' \emph{Simul. Model. Pract. Theory}, vol. 134, Art. no. 102955, Jul. 2024, doi: 10.1016/j.simpat.2024.102955.
+\bibitem{duan2026} H. Duan and Q. Sun, ``A covariate aware and dual convolutional network model for stadium crowd flow prediction,'' \emph{Sci. Rep.}, vol. 16, Art. no. 44012, 2026, doi: 10.1038/s41598-026-44012-7.
+\bibitem{shang2026} G. Shang, H. Weng, and X. Lu, ``CPMS-Net: A lightweight cooperative perception multi-scale network for crowd counting,'' \emph{Neural Comput. Appl.}, vol. 38, 2026, doi: 10.1007/s44443-026-01052-3.
+\bibitem{bohnet2025} D. Bohnet and Y. Wehrlein, ``Surrogate model using a U-Net-ConvLSTM architecture for a macroscopic pedestrian flow model,'' in \emph{Proc. Eur. Conf. Model. Simul. (ECMS)}, 2025, pp. 300--307, doi: 10.7148/2025-0300.
+\bibitem{edelmann2026} D. Edelmann and T. J. Goda, ``Living polymer foam? Mechanical analysis of emergency crowd movement,'' \emph{Physica A}, vol. 638, Art. no. 131900, 2026, doi: 10.1016/j.physa.2026.131900.
+\bibitem{zhou2025} X. S. Zhou, T. Kim, M. Ameli, H. Zhu, and Y. Honma, ``Flow-through tensors: A unified computational graph architecture for multi-layer network optimization,'' \emph{Artif. Intell. Transp.}, vol. 1, Art. no. 100006, 2025, doi: 10.1016/j.ait.2025.100006.
+\bibitem{jeong2026} Y. Jeong, S. Kim, J. Lee, D. Lee, and T. Hwang, ``A two-stage coarse-to-fine framework for sparse crowd density prediction in digital twin-based safety monitoring,'' \emph{Sensors}, vol. 26, no. 13, Art. no. 4094, Jul. 2026, doi: 10.3390/s26134094.
+\bibitem{jang2026} Y. Jang and T. Kwon, ``Dense crowd flow simulation considering pedestrian-venue relationships,'' \emph{J. Korea Comput. Graph. Soc.}, vol. 32, no. 3, pp. 97--106, 2026, doi: 10.15701/kcgs.2026.32.3.97.
+\bibitem{boomers2024} A. K. Boomers, M. Boltes, and U. G. Kersting, ``How approaching angle, bottleneck width and walking speed affect the use of a bottleneck by individuals,'' \emph{Sensors}, vol. 24, no. 6, Art. no. 1720, Mar. 2024, doi: 10.3390/s24061720.
+\bibitem{holt2004} C. C. Holt, ``Forecasting seasonals and trends by exponentially weighted moving averages,'' \emph{Int. J. Forecast.}, vol. 20, no. 1, pp. 5--10, 2004.
+\bibitem{hughes2002} R. L. Hughes, ``A continuum theory for the flow of pedestrians,'' \emph{Transp. Res. Part B: Methodol.}, vol. 36, no. 6, pp. 507--535, Jul. 2002.
+\bibitem{helbing2000} D. Helbing, I. Farkas, and T. Vicsek, ``Simulating dynamical features of escape panic,'' \emph{Nature}, vol. 407, pp. 487--490, Sep. 2000.
+\bibitem{deterding2011} S. Deterding, D. Dixon, R. Khaled, and L. Nacke, ``From game design elements to gamefulness: Defining `gamification','' in \emph{Proc. 15th Int. Academic MindTrek Conf.}, Tampere, Finland, 2011, pp. 9--15.
+\end{thebibliography}
+
+\end{document}

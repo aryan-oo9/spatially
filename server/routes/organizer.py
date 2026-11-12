@@ -27,14 +27,16 @@ class IncidentCreate(BaseModel):
     event_id: str
     title: str
     description: Optional[str] = ""
-    category: str = "other"
-    priority: str = "routine"
+    category: Optional[str] = "other"
+    priority: Optional[str] = "normal"
+    zone_id: Optional[str] = None
     zone_name: Optional[str] = None
 
 class IncidentUpdate(BaseModel):
     status: Optional[str] = None
     priority: Optional[str] = None
     assigned_to: Optional[str] = None
+    assigned_to_id: Optional[str] = None
     resolution_notes: Optional[str] = None
 
 class TaskCreate(BaseModel):
@@ -409,35 +411,78 @@ async def list_incidents(event_id: str, status: Optional[str] = None, current_us
 async def create_incident(data: IncidentCreate, current_user: dict = Depends(require_organizer)):
     supabase = get_supabase()
     verify_event_ownership(supabase, data.event_id, current_user["user_id"])
-    try:
-        result = supabase.rpc("report_operational_incident", {
-            "p_event_id": data.event_id,
-            "p_title": data.title,
-            "p_description": data.description or "",
-            "p_category": data.category,
-            "p_priority": data.priority,
-            "p_zone_name": data.zone_name or ""
-        }).execute()
-        return {"message": "Incident created", "data": result.data}
-    except Exception as e:
-        # Fallback: direct insert
-        new_incident = {
-            "event_id": data.event_id,
-            "title": data.title,
-            "description": data.description or "",
-            "category": data.category,
-            "priority": data.priority,
-            "status": "reported",
-            "reporter_id": current_user.get("id", current_user.get("user_id")),
-        }
-        if data.zone_id:
-            new_incident["zone_id"] = data.zone_id
-        elif data.zone_name:
-            z_res = supabase.table("event_zones").select("id").eq("event_id", data.event_id).ilike("name", data.zone_name.strip()).execute()
-            if z_res.data:
-                new_incident["zone_id"] = z_res.data[0]["id"]
-        result = supabase.table("operational_incidents").insert(new_incident).execute()
-        return {"message": "Incident created", "data": result.data}
+
+    # 1. Normalize priority to ('normal', 'important', 'urgent')
+    priority_map = {
+        "routine": "normal",
+        "low": "normal",
+        "normal": "normal",
+        "medium": "normal",
+        "important": "important",
+        "high": "important",
+        "urgent": "urgent",
+        "critical": "urgent",
+    }
+    priority_val = priority_map.get((data.priority or "").lower(), "normal")
+
+    # 2. Normalize category
+    valid_categories = {
+        'crowd', 'safety', 'security', 'medical', 'infrastructure',
+        'equipment', 'accessibility', 'lost_found', 'attendee_assistance',
+        'operational', 'other'
+    }
+    cat_val = (data.category or "").lower().strip()
+    if cat_val not in valid_categories:
+        cat_val = "other"
+
+    # 3. Ensure description meets length constraint (1..1000)
+    desc_val = (data.description or "").strip()
+    if not desc_val:
+        desc_val = data.title.strip() or "Operational incident reported"
+
+    # 4. Resolve zone_id
+    zone_id = data.zone_id
+    if not zone_id and data.zone_name:
+        z_res = supabase.table("event_zones").select("id").eq("event_id", data.event_id).ilike("name", data.zone_name.strip()).execute()
+        if z_res.data:
+            zone_id = z_res.data[0]["id"]
+
+    user_id = current_user.get("user_id") or current_user.get("id")
+    reporter_name = current_user.get("full_name") or "Organizer"
+
+    new_incident = {
+        "event_id": data.event_id,
+        "reporter_type": "organizer",
+        "reporter_id": user_id,
+        "reporter_name": reporter_name,
+        "category": cat_val,
+        "priority": priority_val,
+        "status": "open",
+        "title": data.title.strip(),
+        "description": desc_val,
+    }
+    if zone_id:
+        new_incident["zone_id"] = zone_id
+
+    result = supabase.table("operational_incidents").insert(new_incident).execute()
+    created = result.data[0] if result.data else None
+
+    # Log in audit trail
+    if created:
+        try:
+            supabase.table("operational_incident_logs").insert({
+                "incident_id": created["id"],
+                "event_id": data.event_id,
+                "actor_id": user_id,
+                "actor_name": reporter_name,
+                "action": "created",
+                "new_status": "open",
+                "notes": f"Incident reported by organizer: {data.title.strip()}"
+            }).execute()
+        except Exception:
+            pass
+
+    return {"message": "Incident created", "data": result.data}
 
 
 @router.put("/incidents/{incident_id}")
@@ -448,21 +493,67 @@ async def update_incident(incident_id: str, data: IncidentUpdate, current_user: 
     if not existing.data:
         raise HTTPException(status_code=404, detail="Incident not found")
     
+    prev_status = existing.data[0].get("status")
+    now_iso = datetime.now(timezone.utc).isoformat()
     updates = {}
-    if data.status:
-        updates["status"] = data.status
+
+    priority_map = {
+        "routine": "normal",
+        "low": "normal",
+        "normal": "normal",
+        "medium": "normal",
+        "important": "important",
+        "high": "important",
+        "urgent": "urgent",
+        "critical": "urgent",
+    }
     if data.priority:
-        updates["priority"] = data.priority
-    if data.assigned_to:
-        updates["assigned_to"] = data.assigned_to
+        updates["priority"] = priority_map.get(data.priority.lower(), data.priority)
+
+    if data.status:
+        st = data.status.lower().strip()
+        if st in ('open', 'acknowledged', 'assigned', 'in_progress', 'resolved', 'closed', 'cancelled'):
+            updates["status"] = st
+            if st == "resolved":
+                updates["resolved_at"] = now_iso
+            elif st == "closed":
+                updates["closed_at"] = now_iso
+            elif st == "acknowledged":
+                updates["acknowledged_at"] = now_iso
+
+    assign_id = data.assigned_to_id or data.assigned_to
+    if assign_id:
+        updates["assigned_to_id"] = assign_id
+        updates["assigned_at"] = now_iso
+        if not data.status:
+            updates["status"] = "assigned"
+
     if data.resolution_notes:
         updates["resolution_notes"] = data.resolution_notes
-    
+
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
-    
-    updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    updates["updated_at"] = now_iso
     result = supabase.table("operational_incidents").update(updates).eq("id", incident_id).execute()
+
+    # Log in audit trail
+    try:
+        new_status = updates.get("status", prev_status)
+        action_name = "resolved" if new_status == "resolved" else ("closed" if new_status == "closed" else ("assigned" if assign_id else "note_added"))
+        supabase.table("operational_incident_logs").insert({
+            "incident_id": incident_id,
+            "event_id": existing.data[0]["event_id"],
+            "actor_id": current_user["user_id"],
+            "actor_name": current_user.get("full_name") or "Organizer",
+            "action": action_name,
+            "previous_status": prev_status,
+            "new_status": new_status,
+            "notes": data.resolution_notes or f"Incident updated ({new_status})"
+        }).execute()
+    except Exception:
+        pass
+
     return {"message": "Incident updated", "data": result.data}
 
 
@@ -1616,12 +1707,133 @@ async def export_event_data(event_id: str, report_type: str = Query("summary"), 
 # 13. LOST & FOUND
 # ═══════════════════════════════════════════════════════════════
 
+VALID_LF_STATUSES = {"draft", "submitted", "in_review", "matched", "resolved"}
+VALID_LF_CATEGORIES = {"electronics", "wallet", "id_card", "bag", "clothing", "keys", "other"}
+
+def _normalize_lf_status(raw_status: Optional[str]) -> str:
+    if not raw_status:
+        return "submitted"
+    s = raw_status.lower().strip()
+    if s in ("open", "new", "pending"):
+        return "submitted"
+    if s in ("returned", "closed", "expired"):
+        return "resolved"
+    if s in VALID_LF_STATUSES:
+        return s
+    return "submitted"
+
+def _normalize_lf_category(raw_cat: Optional[str]) -> str:
+    if not raw_cat:
+        return "other"
+    c = raw_cat.lower().strip()
+    return c if c in VALID_LF_CATEGORIES else "other"
+
+class LostFoundCreate(BaseModel):
+    event_id: str
+    report_type: str = "lost"  # 'lost' | 'found'
+    category: str = "other"
+    title: str
+    description: Optional[str] = ""
+    zone_id: Optional[str] = None
+    venue_zone_name: Optional[str] = None
+    specific_location: Optional[str] = None
+    image_url: Optional[str] = None
+    status: Optional[str] = "submitted"
+    pickup_instructions: Optional[str] = None
+
+class LostFoundUpdate(BaseModel):
+    report_type: Optional[str] = None
+    category: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    zone_id: Optional[str] = None
+    venue_zone_name: Optional[str] = None
+    specific_location: Optional[str] = None
+    image_url: Optional[str] = None
+    status: Optional[str] = None
+    pickup_instructions: Optional[str] = None
+
 @router.get("/lost-found/{event_id}")
 async def list_lost_found(event_id: str, current_user: dict = Depends(require_organizer)):
     supabase = get_supabase()
     verify_event_ownership(supabase, event_id, current_user["user_id"])
     result = supabase.table("lost_found_reports").select("*").eq("event_id", event_id).order("created_at", desc=True).execute()
-    return {"items": result.data}
+    return {"items": result.data or []}
+
+@router.post("/lost-found")
+async def create_lost_found(data: LostFoundCreate, current_user: dict = Depends(require_organizer)):
+    supabase = get_supabase()
+    verify_event_ownership(supabase, data.event_id, current_user["user_id"])
+
+    report_type = data.report_type.lower() if data.report_type in ("lost", "found") else "lost"
+    category = _normalize_lf_category(data.category)
+    status = _normalize_lf_status(data.status)
+
+    payload = {
+        "event_id": data.event_id,
+        "reporter_user_id": current_user["user_id"],
+        "reporter_device_id": "organizer-dashboard",
+        "report_type": report_type,
+        "category": category,
+        "title": data.title.strip(),
+        "description": data.description.strip() if data.description else "",
+        "status": status,
+        "specific_location": data.specific_location.strip() if data.specific_location else None,
+        "zone_id": data.zone_id if data.zone_id else None,
+        "image_url": data.image_url if data.image_url else None,
+        "pickup_instructions": data.pickup_instructions.strip() if data.pickup_instructions else None,
+    }
+
+    result = supabase.table("lost_found_reports").insert(payload).execute()
+    if not result.data:
+        raise HTTPException(status_code=500, detail="Failed to create Lost & Found report")
+    return {"item": result.data[0]}
+
+@router.put("/lost-found/{item_id}")
+async def update_lost_found(item_id: str, data: LostFoundUpdate, current_user: dict = Depends(require_organizer)):
+    supabase = get_supabase()
+    existing = supabase.table("lost_found_reports").select("id, event_id").eq("id", item_id).execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Lost & Found report not found")
+    verify_event_ownership(supabase, existing.data[0]["event_id"], current_user["user_id"])
+
+    payload = {
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    if data.report_type is not None:
+        payload["report_type"] = data.report_type.lower() if data.report_type in ("lost", "found") else "lost"
+    if data.category is not None:
+        payload["category"] = _normalize_lf_category(data.category)
+    if data.title is not None:
+        payload["title"] = data.title.strip()
+    if data.description is not None:
+        payload["description"] = data.description.strip()
+    if data.specific_location is not None:
+        payload["specific_location"] = data.specific_location.strip() or None
+    if data.zone_id is not None:
+        payload["zone_id"] = data.zone_id or None
+    if data.image_url is not None:
+        payload["image_url"] = data.image_url or None
+    if data.status is not None:
+        payload["status"] = _normalize_lf_status(data.status)
+    if data.pickup_instructions is not None:
+        payload["pickup_instructions"] = data.pickup_instructions.strip() or None
+
+    result = supabase.table("lost_found_reports").update(payload).eq("id", item_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=500, detail="Failed to update Lost & Found report")
+    return {"item": result.data[0]}
+
+@router.delete("/lost-found/{item_id}")
+async def delete_lost_found(item_id: str, current_user: dict = Depends(require_organizer)):
+    supabase = get_supabase()
+    existing = supabase.table("lost_found_reports").select("id, event_id").eq("id", item_id).execute()
+    if not existing.data:
+        raise HTTPException(status_code=404, detail="Lost & Found report not found")
+    verify_event_ownership(supabase, existing.data[0]["event_id"], current_user["user_id"])
+
+    supabase.table("lost_found_reports").delete().eq("id", item_id).execute()
+    return {"success": True, "id": item_id}
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -1629,28 +1841,56 @@ async def list_lost_found(event_id: str, current_user: dict = Depends(require_or
 # ═══════════════════════════════════════════════════════════════
 
 class IncidentAssignRequest(BaseModel):
-    volunteer_id: str
+    volunteer_id: Optional[str] = None
+    assigned_to: Optional[str] = None
     notes: Optional[str] = None
 
 
 @router.post("/incidents/{incident_id}/assign")
 async def assign_incident(incident_id: str, data: IncidentAssignRequest, current_user: dict = Depends(require_organizer)):
-    """Atomic volunteer dispatch via assign_operational_incident RPC."""
+    """Atomic volunteer dispatch and assignment."""
     supabase = get_supabase()
-    existing = supabase.table("operational_incidents").select("id, event_id").eq("id", incident_id).execute()
+    existing = supabase.table("operational_incidents").select("id, event_id, status").eq("id", incident_id).execute()
     if not existing.data:
         raise HTTPException(status_code=404, detail="Incident not found")
     verify_event_ownership(supabase, existing.data[0]["event_id"], current_user["user_id"])
 
+    target_assignee_id = data.assigned_to or data.volunteer_id
+    if not target_assignee_id:
+        raise HTTPException(status_code=400, detail="assigned_to or volunteer_id is required")
+
+    # Fetch assignee profile
+    prof_res = supabase.table("profiles").select("full_name").eq("id", target_assignee_id).execute()
+    assignee_name = prof_res.data[0]["full_name"] if prof_res.data else "Assigned Staff"
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    update_data = {
+        "assigned_to_id": target_assignee_id,
+        "assigned_at": now_iso,
+        "status": "assigned",
+        "updated_at": now_iso,
+    }
+    if data.notes:
+        update_data["staff_notes"] = data.notes
+
+    res = supabase.table("operational_incidents").update(update_data).eq("id", incident_id).execute()
+
+    # Log in audit trail
     try:
-        result = supabase.rpc("assign_operational_incident", {
-            "p_incident_id": incident_id,
-            "p_assignee_id": data.volunteer_id,
-            "p_assigner_id": current_user["user_id"],
+        supabase.table("operational_incident_logs").insert({
+            "incident_id": incident_id,
+            "event_id": existing.data[0]["event_id"],
+            "actor_id": current_user["user_id"],
+            "actor_name": current_user.get("full_name") or "Organizer",
+            "action": "assigned",
+            "previous_status": existing.data[0].get("status"),
+            "new_status": "assigned",
+            "notes": f"Assigned to {assignee_name}" + (f": {data.notes}" if data.notes else "")
         }).execute()
-        return {"message": "Incident assigned", "data": result.data}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"RPC failed: {str(e)}")
+    except Exception:
+        pass
+
+    return {"message": "Incident assigned successfully", "data": res.data}
 
 
 @router.get("/incident-logs/{incident_id}")
@@ -1662,14 +1902,18 @@ async def get_incident_logs(incident_id: str, current_user: dict = Depends(requi
         raise HTTPException(status_code=404, detail="Incident not found")
     verify_event_ownership(supabase, existing.data[0]["event_id"], current_user["user_id"])
 
-    logs = (
+    logs_res = (
         supabase.table("operational_incident_logs")
-        .select("*, actor:profiles(id, full_name)")
+        .select("*")
         .eq("incident_id", incident_id)
         .order("created_at")
         .execute()
     )
-    return {"logs": logs.data}
+    logs_data = []
+    for log in (logs_res.data or []):
+        log["actor"] = {"id": log.get("actor_id"), "full_name": log.get("actor_name") or "Staff"}
+        logs_data.append(log)
+    return {"logs": logs_data}
 
 
 # ═══════════════════════════════════════════════════════════════

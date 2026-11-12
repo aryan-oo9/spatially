@@ -8,7 +8,6 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:app_settings/app_settings.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import '../models/ble_observation.dart';
 import '../models/operational_message.dart' hide OperationalPriority;
 import '../services/ble_scanner_service.dart';
 import '../services/session_state.dart';
@@ -64,9 +63,7 @@ class ScanScreen extends StatefulWidget {
 class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
   late final VolunteerAssignmentRepository _assignmentRepo;
   final BleScannerService _scanner = BleScannerService();
-  final List<BleObservation> _observations = [];
 
-  StreamSubscription<BleObservation>? _streamSub;
   StreamSubscription<void>? _countSub;
   StreamSubscription<BluetoothAdapterState>? _btStateSub;
   StreamSubscription<QueueSyncInfo>? _queueSyncSub;
@@ -195,8 +192,6 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
   Future<void> _handleRevokedAssignment(String reason) async {
     if (_isScanning) {
       await _scanner.stopScan();
-      await _streamSub?.cancel();
-      _streamSub = null;
       await _countSub?.cancel();
       _countSub = null;
       await FlutterForegroundTask.stopService();
@@ -382,7 +377,6 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
     _relativeTimeTimer?.cancel();
     _queueSyncSub?.cancel();
     _btStateSub?.cancel();
-    _streamSub?.cancel();
     _countSub?.cancel();
     _notificationChannel?.unsubscribe();
     _commsMessageSub?.cancel();
@@ -402,8 +396,6 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
     try {
       if (_isScanning) {
         await _scanner.stopScan();
-        await _streamSub?.cancel();
-        _streamSub = null;
         await _countSub?.cancel();
         _countSub = null;
         await FlutterForegroundTask.stopService();
@@ -463,17 +455,7 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
         }
 
         setState(() {
-          _observations.clear();
           _isScanning = true;
-        });
-
-        _streamSub = _scanner.observations.listen((obs) {
-          setState(() {
-            _observations.insert(0, obs);
-            if (_observations.length > 50) {
-              _observations.removeLast(); // Cap at 50 to prevent UI lag
-            }
-          });
         });
 
         _countSub = _scanner.stateStream.listen((_) {
@@ -525,8 +507,6 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
   Future<void> _signOut() async {
     if (_isScanning) {
       await _scanner.stopScan();
-      await _streamSub?.cancel();
-      _streamSub = null;
       await _countSub?.cancel();
       _countSub = null;
       await FlutterForegroundTask.stopService();
@@ -678,15 +658,15 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
               TextSpan(
                 text: 'Spatially ',
                 style: GoogleFonts.audiowide(
-                  fontSize: 18,
+                  fontSize: 16,
                   fontWeight: FontWeight.bold,
                 ),
               ),
               TextSpan(
-                text: 'Volunteer Dashboard',
+                text: 'Volunteer',
                 style: GoogleFonts.poppins(
                   fontSize: 13,
-                  fontWeight: FontWeight.w300,
+                  fontWeight: FontWeight.w400,
                 ),
               ),
             ],
@@ -704,13 +684,6 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
             onPressed: _openCommunicationsCenter,
           ),
           IconButton(
-            icon: const Icon(Icons.assignment_outlined),
-            tooltip: 'Incidents & Help',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const IncidentsListScreen()),
-            ),
-          ),
-          IconButton(
             icon: totalPending > 0
                 ? Badge(
                     label: Text('$totalPending'),
@@ -719,16 +692,6 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
                 : const Icon(Icons.sync),
             tooltip: 'Sync queued items',
             onPressed: _isProcessing ? null : _manualSync,
-          ),
-          IconButton(
-            icon: _pendingTicketCount > 0
-                ? Badge(
-                    label: Text('$_pendingTicketCount'),
-                    child: const Icon(Icons.qr_code_scanner),
-                  )
-                : const Icon(Icons.qr_code_scanner),
-            tooltip: 'Scan Attendee Ticket',
-            onPressed: _openScanner,
           ),
           IconButton(
             icon: const Icon(Icons.logout),
@@ -793,43 +756,20 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
 
                   const SizedBox(height: 12),
 
-                  // BLOCK 2.5D: EVENT AWARENESS & ATTENTION REQUIRED
-                  _buildEventAwarenessCard(),
+                  // CARD 2: MERGED INCIDENTS, EVENT AWARENESS & OPERATIONAL WORKFLOWS
+                  _buildMergedOperationalHubCard(),
 
                   const SizedBox(height: 12),
 
-                  // BLOCK 2.5B: OPERATIONAL OPERATIONS HUB (INCIDENTS, HELP, LOST & FOUND)
-                  _buildOperationalHubCard(),
-
-                  const SizedBox(height: 12),
-
-                  // CARD 2: SCANNER STATE & CONTROLS
-                  _buildScannerControlsCard(),
-
-                  const SizedBox(height: 12),
-
-                  // CARD 3: CROWD PRESENTATION & DENSITY
-                  _buildCrowdMetricsCard(detectedCount, densityInfo, capacity),
-
-                  const SizedBox(height: 12),
-
-                  // CARD 4: OFFLINE & SYNC VISIBILITY
-                  _buildSyncVisibilityCard(isSyncing, totalPending, lastSync),
-
-                  const SizedBox(height: 12),
-
-                  // CARD 5: QR ENTRY ACTION
-                  _buildQrActionCard(),
-
-                  const SizedBox(height: 12),
-
-                  // CARD 6: OPERATIONS COMMUNICATIONS ACTION
-                  _buildCommsActionCard(),
-
-                  const SizedBox(height: 12),
-
-                  // CARD 7: LIVE TELEMETRY OBSERVATIONS FEED
-                  _buildTelemetryFeedCard(),
+                  // CARD 3: CROWD PRESENTATION, TICKETING & SCANNER CONTROLS
+                  _buildCrowdAndScannerCard(
+                    detectedCount: detectedCount,
+                    densityInfo: densityInfo,
+                    capacity: capacity,
+                    isSyncing: isSyncing,
+                    totalPending: totalPending,
+                    lastSync: lastSync,
+                  ),
                 ],
               ),
             ),
@@ -930,30 +870,36 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
             const SizedBox(height: 10),
             Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: isRoving ? Colors.purple.shade50 : Colors.teal.shade50,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        isRoving ? Icons.directions_walk : Icons.pin_drop,
-                        size: 13,
-                        color: isRoving ? Colors.purple.shade800 : Colors.teal.shade800,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        isRoving ? 'Roving Assignment (All Event Zones)' : 'Fixed Station Shift',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: isRoving ? Colors.purple.shade900 : Colors.teal.shade900,
+                Flexible(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: isRoving ? Colors.purple.shade50 : Colors.teal.shade50,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          isRoving ? Icons.directions_walk : Icons.pin_drop,
+                          size: 13,
+                          color: isRoving ? Colors.purple.shade800 : Colors.teal.shade800,
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            isRoving ? 'Roving Assignment (All Event Zones)' : 'Fixed Station Shift',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: isRoving ? Colors.purple.shade900 : Colors.teal.shade900,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 if (capacity != null && capacity > 0) ...[
@@ -1019,16 +965,17 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
   }
 
   // ---------------------------------------------------------------------------
-  // Block 2.5D: Event Awareness Component Cards
+  // Merged Operational Hub & Event Awareness
   // ---------------------------------------------------------------------------
 
-  Widget _buildEventAwarenessCard() {
+  Widget _buildMergedOperationalHubCard() {
     return StreamBuilder<OperationalAwarenessSummary>(
       stream: EventAwarenessService.instance.summaryStream,
       initialData: EventAwarenessService.instance.summary,
       builder: (context, snapshot) {
         final summary = snapshot.data ?? const OperationalAwarenessSummary();
         final attentionItems = EventAwarenessService.instance.attentionRequiredItems;
+        final hasActiveIncidents = summary.activeIncidentsCount > 0;
 
         return Card(
           elevation: 2,
@@ -1038,33 +985,41 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Card Header with Live Feed link
+                // Header with Awareness Links
                 Row(
                   children: [
-                    Icon(Icons.radar, size: 16, color: Colors.indigo.shade700),
+                    Icon(Icons.shield_outlined, size: 16, color: Colors.indigo.shade800),
                     const SizedBox(width: 6),
-                    Text(
-                      'EVENT AWARENESS',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.5,
-                        color: Colors.indigo.shade800,
+                    Expanded(
+                      child: Text(
+                        'AWARENESS & WORKFLOWS',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
+                          color: Colors.indigo.shade900,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    const Spacer(),
+                    const SizedBox(width: 4),
                     InkWell(
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(builder: (_) => const OperationalHealthScreen()),
                       ),
-                      borderRadius: BorderRadius.circular(4),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      borderRadius: BorderRadius.circular(6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.indigo.shade50,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.insights, size: 13, color: Colors.indigo.shade700),
-                            const SizedBox(width: 2),
+                            Icon(Icons.insights, size: 12, color: Colors.indigo.shade700),
+                            const SizedBox(width: 3),
                             Text(
                               'Health',
                               style: TextStyle(
@@ -1082,12 +1037,18 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(builder: (_) => const EventAwarenessFeedScreen()),
                       ),
-                      borderRadius: BorderRadius.circular(4),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      borderRadius: BorderRadius.circular(6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: Colors.indigo.shade50,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            Icon(Icons.radar, size: 12, color: Colors.indigo.shade700),
+                            const SizedBox(width: 3),
                             Text(
                               'Live Feed',
                               style: TextStyle(
@@ -1096,8 +1057,6 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
                                 color: Colors.indigo.shade700,
                               ),
                             ),
-                            const SizedBox(width: 2),
-                            Icon(Icons.chevron_right, size: 14, color: Colors.indigo.shade700),
                           ],
                         ),
                       ),
@@ -1105,166 +1064,160 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
                   ],
                 ),
 
-                // Attention Required alert block if urgent or important items exist
+                // Attention Required alert block or Active Incident prompt
                 if (attentionItems.isNotEmpty) ...[
                   const SizedBox(height: 10),
+                  _buildAttentionAlertBox(attentionItems.first, attentionItems.length),
+                ] else if (hasActiveIncidents) ...[
+                  const SizedBox(height: 10),
                   Container(
-                    padding: const EdgeInsets.all(10),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     decoration: BoxDecoration(
-                      color: attentionItems.first.priority == OperationalPriority.urgent
-                          ? Colors.red.shade50
-                          : Colors.amber.shade50,
+                      color: Colors.red.shade50,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: attentionItems.first.priority == OperationalPriority.urgent
-                            ? Colors.red.shade300
-                            : Colors.amber.shade300,
-                      ),
+                      border: Border.all(color: Colors.red.shade200),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: Row(
                       children: [
-                        Row(
-                          children: [
-                            Icon(
-                              attentionItems.first.priority == OperationalPriority.urgent
-                                  ? Icons.error_outline
-                                  : Icons.warning_amber_rounded,
-                              size: 16,
-                              color: attentionItems.first.priority == OperationalPriority.urgent
-                                  ? Colors.red.shade800
-                                  : Colors.amber.shade900,
+                        Icon(Icons.warning_amber_rounded, size: 16, color: Colors.red.shade800),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '${summary.activeIncidentsCount} active incident${summary.activeIncidentsCount == 1 ? '' : 's'} reported in this event',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.red.shade900,
                             ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'ATTENTION REQUIRED (${attentionItems.length})',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 0.5,
-                                color: attentionItems.first.priority == OperationalPriority.urgent
-                                    ? Colors.red.shade900
-                                    : Colors.amber.shade900,
-                              ),
-                            ),
-                            const Spacer(),
-                            if (attentionItems.first.zoneName != null)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(4),
-                                  border: Border.all(color: Colors.grey.shade300),
-                                ),
-                                child: Text(
-                                  attentionItems.first.zoneName!,
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.grey.shade800,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          attentionItems.first.title,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                            color: attentionItems.first.priority == OperationalPriority.urgent
-                                ? Colors.red.shade900
-                                : Colors.amber.shade900,
                           ),
                         ),
-                        Text(
-                          attentionItems.first.message,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: attentionItems.first.priority == OperationalPriority.urgent
-                                ? Colors.red.shade800
-                                : Colors.amber.shade900,
+                        InkWell(
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => const IncidentsListScreen()),
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            TextButton(
-                              onPressed: () {
-                                EventAwarenessService.instance
-                                    .acknowledgeAttention(attentionItems.first.id);
-                              },
-                              style: TextButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                minimumSize: Size.zero,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                              child: const Text('ACKNOWLEDGE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                          child: Text(
+                            'VIEW',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.red.shade900,
                             ),
-                            const SizedBox(width: 8),
-                            ElevatedButton(
-                              onPressed: () {
-                                EventAwarenessService.instance
-                                    .markAttentionSeen(attentionItems.first.id);
-                                _navigateToAwarenessItem(attentionItems.first);
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: attentionItems.first.priority == OperationalPriority.urgent
-                                    ? Colors.red.shade800
-                                    : Colors.amber.shade800,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                minimumSize: Size.zero,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                              child: const Text('ACT NOW', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                            ),
-                          ],
+                          ),
                         ),
                       ],
                     ),
                   ),
                 ],
 
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
 
-                // Derived Operational Summary Matrix
+                // 4-Pillar Operational Action Matrix
                 Row(
                   children: [
-                    _buildAwarenessMetricBadge(
-                      label: 'Crowd',
-                      value: summary.busyZonesCount > 0 ? '${summary.busyZonesCount} busy' : 'Normal',
-                      color: summary.busyZonesCount > 0 ? Colors.orange.shade800 : Colors.teal.shade800,
-                      bgColor: summary.busyZonesCount > 0 ? Colors.orange.shade50 : Colors.teal.shade50,
-                      icon: Icons.groups_outlined,
+                    // 1. Report Issue
+                    _buildQuickActionBtn(
+                      icon: Icons.add_alert_outlined,
+                      label: 'Report Issue',
+                      color: Colors.orange.shade800,
+                      bgColor: Colors.orange.shade50,
+                      borderColor: Colors.orange.shade200,
+                      onTap: () => ReportIssueDialog.show(context),
                     ),
-                    const SizedBox(width: 6),
-                    _buildAwarenessMetricBadge(
-                      label: 'Incidents',
-                      value: '${summary.activeIncidentsCount} active',
-                      color: summary.activeIncidentsCount > 0 ? Colors.red.shade800 : Colors.grey.shade700,
-                      bgColor: summary.activeIncidentsCount > 0 ? Colors.red.shade50 : Colors.grey.shade100,
-                      icon: Icons.warning_amber_rounded,
+                    const SizedBox(width: 8),
+
+                    // 2. Need Help
+                    _buildQuickActionBtn(
+                      icon: Icons.handshake_outlined,
+                      label: 'Need Help',
+                      color: Colors.red.shade800,
+                      bgColor: Colors.red.shade50,
+                      borderColor: Colors.red.shade200,
+                      onTap: () => ReportIssueDialog.show(context, isNeedHelpMode: true),
                     ),
-                    const SizedBox(width: 6),
-                    _buildAwarenessMetricBadge(
-                      label: 'Tasks',
-                      value: '${summary.pendingTasksCount} pending',
-                      color: summary.pendingTasksCount > 0 ? Colors.blue.shade800 : Colors.grey.shade700,
-                      bgColor: summary.pendingTasksCount > 0 ? Colors.blue.shade50 : Colors.grey.shade100,
+                    const SizedBox(width: 8),
+
+                    // 3. Incidents & Assistance
+                    _buildQuickActionBtn(
                       icon: Icons.assignment_outlined,
+                      label: hasActiveIncidents
+                          ? 'Incidents (${summary.activeIncidentsCount})'
+                          : 'Incidents',
+                      color: Colors.indigo.shade800,
+                      bgColor: Colors.indigo.shade50,
+                      borderColor: Colors.indigo.shade200,
+                      badgeCount: summary.activeIncidentsCount > 0 ? summary.activeIncidentsCount : null,
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const IncidentsListScreen()),
+                      ),
                     ),
-                    const SizedBox(width: 6),
-                    _buildAwarenessMetricBadge(
-                      label: 'Relief',
-                      value: summary.coverageNeededCount > 0 ? '${summary.coverageNeededCount} open' : 'None',
-                      color: summary.coverageNeededCount > 0 ? Colors.purple.shade800 : Colors.grey.shade700,
-                      bgColor: summary.coverageNeededCount > 0 ? Colors.purple.shade50 : Colors.grey.shade100,
-                      icon: Icons.sync,
+                    const SizedBox(width: 8),
+
+                    // 4. Lost & Found
+                    _buildQuickActionBtn(
+                      icon: Icons.inventory_2_outlined,
+                      label: 'Lost & Found',
+                      color: Colors.teal.shade800,
+                      bgColor: Colors.teal.shade50,
+                      borderColor: Colors.teal.shade200,
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const LostFoundOperationsScreen()),
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 12),
+                const Divider(height: 1),
+                const SizedBox(height: 10),
+
+                // Floor Operations: Shift, Team & Floor Tasks
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildFloorBarItem(
+                        icon: Icons.access_time_outlined,
+                        title: _currentShift?.isOnBreak == true
+                            ? 'On Break'
+                            : (_currentShift?.isActive == true ? 'Active Shift' : 'Shift Ops'),
+                        subtitle: _currentShift?.shiftName ?? 'No Shift',
+                        color: _currentShift?.isOnBreak == true
+                            ? Colors.amber.shade900
+                            : (_currentShift?.isActive == true ? const Color(0xFF065F46) : Colors.blue.shade900),
+                        bgColor: _currentShift?.isOnBreak == true
+                            ? Colors.amber.shade50
+                            : (_currentShift?.isActive == true ? const Color(0xFFECFDF5) : Colors.blue.shade50),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const ShiftOverviewScreen()),
+                        ).then((_) => _loadShiftAndTasks()),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildFloorBarItem(
+                        icon: Icons.groups_outlined,
+                        title: 'Team & Relief',
+                        subtitle: summary.coverageNeededCount > 0
+                            ? '${summary.coverageNeededCount} open relief'
+                            : (_currentShift?.teamName ?? 'Team Nominal'),
+                        color: Colors.purple.shade900,
+                        bgColor: Colors.purple.shade50,
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const TeamOverviewScreen()),
+                        ).then((_) => _loadShiftAndTasks()),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildFloorBarItem(
+                        icon: Icons.task_alt,
+                        title: 'Floor Tasks',
+                        subtitle: _pendingTaskCount > 0 ? '$_pendingTaskCount pending' : 'All Clear',
+                        color: Colors.cyan.shade900,
+                        bgColor: Colors.cyan.shade50,
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const SupervisorTasksScreen()),
+                        ).then((_) => _loadShiftAndTasks()),
+                      ),
                     ),
                   ],
                 ),
@@ -1276,44 +1229,572 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildAwarenessMetricBadge({
+  Widget _buildAttentionAlertBox(OperationalAwarenessItem item, int totalCount) {
+    final isUrgent = item.priority == OperationalPriority.urgent;
+    final color = isUrgent ? Colors.red.shade800 : Colors.amber.shade900;
+    final bgColor = isUrgent ? Colors.red.shade50 : Colors.amber.shade50;
+    final borderColor = isUrgent ? Colors.red.shade300 : Colors.amber.shade300;
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isUrgent ? Icons.error_outline : Icons.warning_amber_rounded,
+                size: 16,
+                color: color,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'ATTENTION REQUIRED ($totalCount)',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                    color: color,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (item.zoneName != null) ...[
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),
+                    child: Text(
+                      item.zoneName!,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey.shade800,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            item.title,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          Text(
+            item.message,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 11, color: color),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () {
+                  EventAwarenessService.instance.acknowledgeAttention(item.id);
+                },
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text('ACKNOWLEDGE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: () {
+                  EventAwarenessService.instance.markAttentionSeen(item.id);
+                  _navigateToAwarenessItem(item);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: color,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text('ACT NOW', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickActionBtn({
+    required IconData icon,
     required String label,
-    required String value,
     required Color color,
     required Color bgColor,
-    required IconData icon,
+    required Color borderColor,
+    required VoidCallback onTap,
+    int? badgeCount,
   }) {
     return Expanded(
       child: InkWell(
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const OperationalHealthScreen()),
-        ),
-        borderRadius: BorderRadius.circular(6),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
           decoration: BoxDecoration(
             color: bgColor,
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: color.withAlpha(80)),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: borderColor),
           ),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 14, color: color),
-              const SizedBox(height: 2),
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Icon(icon, color: color, size: 22),
+                  if (badgeCount != null && badgeCount > 0)
+                    Positioned(
+                      right: -8,
+                      top: -6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: Colors.red.shade700,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          '$badgeCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 4),
               Text(
                 label,
-                style: TextStyle(fontSize: 9, color: Colors.grey.shade600, fontWeight: FontWeight.w600),
-              ),
-              Text(
-                value,
-                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color),
-                maxLines: 1,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildFloorBarItem({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    required Color bgColor,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, size: 18, color: color),
+            const SizedBox(height: 3),
+            Text(
+              title,
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            Text(
+              subtitle,
+              style: TextStyle(fontSize: 9, color: color.withAlpha(200)),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Card 3: Unified Crowd Sensing & BLE Scanner Controls
+  // ---------------------------------------------------------------------------
+
+  Widget _buildCrowdAndScannerCard({
+    required int detectedCount,
+    required CrowdDensityInfo? densityInfo,
+    required int? capacity,
+    required bool isSyncing,
+    required int totalPending,
+    required DateTime? lastSync,
+  }) {
+    String stateLabel;
+    Color stateColor;
+    Color stateBg;
+    IconData stateIcon;
+
+    if (_isProcessing) {
+      stateLabel = 'Updating Scanner...';
+      stateColor = Colors.blue.shade800;
+      stateBg = Colors.blue.shade50;
+      stateIcon = Icons.hourglass_top_rounded;
+    } else if (_isScanning) {
+      stateLabel = '● SCANNING ACTIVE';
+      stateColor = Colors.green.shade800;
+      stateBg = Colors.green.shade50;
+      stateIcon = Icons.radar;
+    } else if (_adapterState != BluetoothAdapterState.on && _adapterState != BluetoothAdapterState.unknown) {
+      stateLabel = '▲ BLUETOOTH OFF';
+      stateColor = Colors.red.shade800;
+      stateBg = Colors.red.shade50;
+      stateIcon = Icons.bluetooth_disabled;
+    } else {
+      stateLabel = '○ READY TO SCAN';
+      stateColor = Colors.blueGrey.shade800;
+      stateBg = Colors.blueGrey.shade50;
+      stateIcon = Icons.play_arrow_rounded;
+    }
+
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Status row + Sync Interval
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: stateBg,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: stateColor.withAlpha(80)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(stateIcon, size: 14, color: stateColor),
+                      const SizedBox(width: 6),
+                      Text(
+                        stateLabel,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: stateColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Row(
+                  children: [
+                    const Text('Sync rate: ', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                    DropdownButton<int>(
+                      value: SessionState.instance.syncRateSeconds,
+                      isDense: true,
+                      underline: const SizedBox(),
+                      items: const [
+                        DropdownMenuItem(value: 10, child: Text('10s', style: TextStyle(fontSize: 11))),
+                        DropdownMenuItem(value: 30, child: Text('30s', style: TextStyle(fontSize: 11))),
+                        DropdownMenuItem(value: 60, child: Text('60s', style: TextStyle(fontSize: 11))),
+                      ],
+                      onChanged: (int? newValue) {
+                        if (newValue != null) {
+                          setState(() {
+                            SessionState.instance.syncRateSeconds = newValue;
+                          });
+                          _scanner.updateTelemetryInterval();
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 14),
+
+            // Attendee detection metrics
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'DETECTED ATTENDEES',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          Text(
+                            '$detectedCount',
+                            style: GoogleFonts.poppins(
+                              fontSize: 36,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.indigo.shade900,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              'devices nearby',
+                              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                if (densityInfo != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: densityInfo.bgColor,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: densityInfo.color.withAlpha(80)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          densityInfo.label,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: densityInfo.color,
+                          ),
+                        ),
+                        Text(
+                          '${(densityInfo.ratio * 100).toInt()}% capacity',
+                          style: TextStyle(fontSize: 10, color: densityInfo.color),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+
+            if (densityInfo != null) ...[
+              const SizedBox(height: 6),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: densityInfo.ratio.clamp(0.0, 1.0),
+                  minHeight: 6,
+                  backgroundColor: Colors.grey.shade200,
+                  valueColor: AlwaysStoppedAnimation<Color>(densityInfo.color),
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 12),
+
+            // Mini stats
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildMiniStat('Unique Seen', '${_scanner.totalUniqueSpatiallySeenCount}'),
+                  Container(width: 1, height: 20, color: Colors.grey.shade300),
+                  _buildMiniStat('Ambient BLE', '${_scanner.activeDevicesCount}'),
+                  Container(width: 1, height: 20, color: Colors.grey.shade300),
+                  _buildMiniStat('Raw Signals', '${_scanner.rawObservationsCount}'),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 14),
+
+            // Actions: Start BLE Scanner & Scan Attendee Pass
+            Row(
+              children: [
+                Expanded(
+                  flex: 5,
+                  child: SizedBox(
+                    height: 46,
+                    child: ElevatedButton.icon(
+                      onPressed: _isProcessing ? null : _toggleScan,
+                      icon: Icon(
+                        _isScanning ? Icons.stop_rounded : Icons.sensors_rounded,
+                        size: 20,
+                      ),
+                      label: Text(
+                        _isScanning ? 'Stop BLE' : 'Start BLE',
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _isScanning ? Colors.red.shade700 : Colors.indigo.shade600,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 5,
+                  child: SizedBox(
+                    height: 46,
+                    child: ElevatedButton.icon(
+                      onPressed: _openScanner,
+                      icon: const Icon(Icons.qr_code_scanner_rounded, size: 20),
+                      label: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('Scan Pass', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                          if (_pendingTicketCount > 0) ...[
+                            const SizedBox(width: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.shade700,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                '$_pendingTicketCount',
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue.shade700,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+            const Divider(height: 1),
+            const SizedBox(height: 10),
+
+            // Compact Sync Footer
+            Row(
+              children: [
+                Icon(
+                  isSyncing
+                      ? Icons.sync
+                      : (totalPending > 0 ? Icons.cloud_queue_rounded : Icons.cloud_done_rounded),
+                  size: 16,
+                  color: isSyncing
+                      ? Colors.blue.shade700
+                      : (totalPending > 0 ? Colors.orange.shade800 : Colors.green.shade700),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    isSyncing
+                        ? 'Uploading queued records to server...'
+                        : (totalPending > 0
+                            ? '$totalPending pending sync (${_queueSyncInfo?.pendingTickets ?? 0} offline passes)'
+                            : 'Online • Synced ${_formatRelativeTime(lastSync)}'),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: totalPending > 0 ? Colors.orange.shade900 : Colors.grey.shade700,
+                      fontWeight: totalPending > 0 ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                ),
+                InkWell(
+                  onTap: _isProcessing ? null : _manualSync,
+                  borderRadius: BorderRadius.circular(4),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    child: Text(
+                      'Sync Now',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue.shade700,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMiniStat(String label, String value) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.bold),
+        ),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 10, color: Colors.grey),
+        ),
+      ],
     );
   }
 
@@ -1353,885 +1834,5 @@ class _ScanScreenState extends State<ScanScreen> with WidgetsBindingObserver {
       case 'scanner':
         break;
     }
-  }
-
-  Widget _buildOperationalHubCard() {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(14.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.shield_outlined, size: 16, color: Colors.orange.shade800),
-                const SizedBox(width: 6),
-                Text(
-                  'OPERATIONAL WORKFLOWS',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 0.5,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            // Row 1: Reporting & Incidents
-            Row(
-              children: [
-                // Quick Action 1: Report Issue
-                Expanded(
-                  child: InkWell(
-                    onTap: () => ReportIssueDialog.show(context),
-                    borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.shade50,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.orange.shade200),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.add_alert_outlined, color: Colors.orange.shade800, size: 22),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Report Issue',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.orange.shade900,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-
-                // Quick Action 2: Need Help
-                Expanded(
-                  child: InkWell(
-                    onTap: () => ReportIssueDialog.show(context, isNeedHelpMode: true),
-                    borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.red.shade50,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.red.shade200),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.handshake_outlined, color: Colors.red.shade800, size: 22),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Need Help',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.red.shade900,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-
-                // Quick Action 3: Incidents
-                Expanded(
-                  child: InkWell(
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const IncidentsListScreen()),
-                    ),
-                    borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.indigo.shade50,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.indigo.shade200),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.assignment_outlined, color: Colors.indigo.shade800, size: 22),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Incidents',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.indigo.shade900,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-
-                // Quick Action 4: Lost & Found
-                Expanded(
-                  child: InkWell(
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const LostFoundOperationsScreen()),
-                    ),
-                    borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.teal.shade50,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.teal.shade200),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.inventory_2_outlined, color: Colors.teal.shade800, size: 22),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Lost & Found',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.teal.shade900,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-
-            // Row 2: Team, Shift & Floor Tasks (Block 2.5C)
-            Row(
-              children: [
-                Expanded(
-                  child: InkWell(
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const ShiftOverviewScreen()),
-                    ).then((_) => _loadShiftAndTasks()),
-                    borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-                      decoration: BoxDecoration(
-                        color: _currentShift?.isOnBreak == true
-                            ? Colors.amber.shade50
-                            : (_currentShift?.isActive == true ? const Color(0xFFECFDF5) : Colors.blue.shade50),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: _currentShift?.isOnBreak == true
-                              ? Colors.amber.shade300
-                              : (_currentShift?.isActive == true ? const Color(0xFFA7F3D0) : Colors.blue.shade200),
-                        ),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.access_time_outlined,
-                            color: _currentShift?.isOnBreak == true
-                                ? Colors.amber.shade900
-                                : (_currentShift?.isActive == true ? const Color(0xFF065F46) : Colors.blue.shade900),
-                            size: 22,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _currentShift?.isOnBreak == true ? 'On Break' : 'Shift Ops',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: _currentShift?.isOnBreak == true
-                                  ? Colors.amber.shade900
-                                  : (_currentShift?.isActive == true ? const Color(0xFF065F46) : Colors.blue.shade900),
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: InkWell(
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const TeamOverviewScreen()),
-                    ).then((_) => _loadShiftAndTasks()),
-                    borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.purple.shade50,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.purple.shade200),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.groups_outlined, color: Colors.purple.shade800, size: 22),
-                          const SizedBox(height: 4),
-                          Text(
-                            'Team & Relief',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.purple.shade900,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: InkWell(
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const SupervisorTasksScreen()),
-                    ).then((_) => _loadShiftAndTasks()),
-                    borderRadius: BorderRadius.circular(10),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.cyan.shade50,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.cyan.shade200),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.task_alt, color: Colors.cyan.shade800, size: 22),
-                          const SizedBox(height: 4),
-                          Text(
-                            _pendingTaskCount > 0 ? 'Tasks ($_pendingTaskCount)' : 'Floor Tasks',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.cyan.shade900,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-
-            // Row 3: Operational Health & Analytics (Block 2.5E)
-            InkWell(
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const OperationalHealthScreen()),
-              ),
-              borderRadius: BorderRadius.circular(10),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-                decoration: BoxDecoration(
-                  color: Colors.cyan.shade50,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.cyan.shade300),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.insights, color: Colors.cyan.shade900, size: 22),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Operational Health & Analytics',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.cyan.shade900,
-                            ),
-                          ),
-                          Text(
-                            'Live health, zone capacity, event timeline, response times',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: Colors.cyan.shade800,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Icon(Icons.arrow_forward_ios, size: 12, color: Colors.cyan.shade900),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildScannerControlsCard() {
-    String stateLabel;
-    Color stateColor;
-    Color stateBg;
-    IconData stateIcon;
-
-    if (_isProcessing) {
-      stateLabel = 'Updating Scanner...';
-      stateColor = Colors.blue.shade800;
-      stateBg = Colors.blue.shade50;
-      stateIcon = Icons.hourglass_top_rounded;
-    } else if (_isScanning) {
-      stateLabel = '● SCANNING ACTIVE';
-      stateColor = Colors.green.shade800;
-      stateBg = Colors.green.shade50;
-      stateIcon = Icons.radar;
-    } else if (_adapterState != BluetoothAdapterState.on && _adapterState != BluetoothAdapterState.unknown) {
-      stateLabel = '▲ BLUETOOTH OFF';
-      stateColor = Colors.red.shade800;
-      stateBg = Colors.red.shade50;
-      stateIcon = Icons.bluetooth_disabled;
-    } else {
-      stateLabel = '○ READY TO SCAN';
-      stateColor = Colors.blueGrey.shade800;
-      stateBg = Colors.blueGrey.shade50;
-      stateIcon = Icons.play_arrow_rounded;
-    }
-
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: stateBg,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: stateColor.withValues(alpha: 0.3)),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(stateIcon, size: 14, color: stateColor),
-                      const SizedBox(width: 6),
-                      Text(
-                        stateLabel,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: stateColor,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Row(
-                  children: [
-                    const Text('Sync: ', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                    DropdownButton<int>(
-                      value: SessionState.instance.syncRateSeconds,
-                      isDense: true,
-                      underline: const SizedBox(),
-                      items: const [
-                        DropdownMenuItem(value: 10, child: Text('10s', style: TextStyle(fontSize: 12))),
-                        DropdownMenuItem(value: 30, child: Text('30s', style: TextStyle(fontSize: 12))),
-                        DropdownMenuItem(value: 60, child: Text('60s', style: TextStyle(fontSize: 12))),
-                      ],
-                      onChanged: (int? newValue) {
-                        if (newValue != null) {
-                          setState(() {
-                            SessionState.instance.syncRateSeconds = newValue;
-                          });
-                          _scanner.updateTelemetryInterval();
-                        }
-                      },
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              height: 46,
-              child: ElevatedButton.icon(
-                onPressed: _isProcessing ? null : _toggleScan,
-                icon: Icon(
-                  _isScanning ? Icons.stop_rounded : Icons.sensors_rounded,
-                  size: 20,
-                ),
-                label: Text(
-                  _isScanning ? 'Stop BLE Scanner' : 'Start BLE Scanner',
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _isScanning ? Colors.red.shade700 : Colors.indigo.shade600,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCrowdMetricsCard(
-    int detectedCount,
-    CrowdDensityInfo? densityInfo,
-    int? capacity,
-  ) {
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'CURRENT DETECTED',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.5,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.baseline,
-                      textBaseline: TextBaseline.alphabetic,
-                      children: [
-                        Text(
-                          '$detectedCount',
-                          style: GoogleFonts.poppins(
-                            fontSize: 42,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.indigo.shade900,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'attendee devices',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                if (densityInfo != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: densityInfo.bgColor,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: densityInfo.color.withValues(alpha: 0.4)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          densityInfo.label,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: densityInfo.color,
-                          ),
-                        ),
-                        Text(
-                          '${(densityInfo.ratio * 100).toInt()}% capacity',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: densityInfo.color,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                else
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Text(
-                      'Raw Detection',
-                      style: TextStyle(fontSize: 11, color: Colors.grey),
-                    ),
-                  ),
-              ],
-            ),
-
-            if (densityInfo != null) ...[
-              const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: densityInfo.ratio.clamp(0.0, 1.0),
-                  minHeight: 6,
-                  backgroundColor: Colors.grey.shade200,
-                  valueColor: AlwaysStoppedAnimation<Color>(densityInfo.color),
-                ),
-              ),
-            ],
-
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade50,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _buildMiniStat('Cumulative Seen', '${_scanner.totalUniqueSpatiallySeenCount}'),
-                  Container(width: 1, height: 24, color: Colors.grey.shade300),
-                  _buildMiniStat('Ambient BLE', '${_scanner.activeDevicesCount}'),
-                  Container(width: 1, height: 24, color: Colors.grey.shade300),
-                  _buildMiniStat('Raw Signals', '${_scanner.rawObservationsCount}'),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMiniStat(String label, String value) {
-    return Column(
-      children: [
-        Text(
-          value,
-          style: GoogleFonts.poppins(fontSize: 14, fontWeight: FontWeight.bold),
-        ),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 10, color: Colors.grey),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSyncVisibilityCard(
-    bool isSyncing,
-    int totalPending,
-    DateTime? lastSync,
-  ) {
-    String statusTitle;
-    String statusSubtitle;
-    Color statusColor;
-    IconData statusIcon;
-
-    if (isSyncing) {
-      statusTitle = 'SYNCING';
-      statusSubtitle = 'Uploading queued observations to server...';
-      statusColor = Colors.blue.shade700;
-      statusIcon = Icons.sync;
-    } else if (totalPending > 0) {
-      statusTitle = 'OFFLINE QUEUE ACTIVE';
-      statusSubtitle = '$totalPending item(s) pending sync (${_queueSyncInfo?.pendingObservations ?? 0} obs, ${_queueSyncInfo?.pendingTickets ?? 0} tickets)';
-      statusColor = Colors.orange.shade800;
-      statusIcon = Icons.cloud_queue_rounded;
-    } else {
-      statusTitle = 'ONLINE / SYNCED';
-      statusSubtitle = lastSync != null
-          ? 'Last synced ${_formatRelativeTime(lastSync)}'
-          : 'All observations uploaded to server';
-      statusColor = Colors.green.shade700;
-      statusIcon = Icons.cloud_done_rounded;
-    }
-
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-        child: Row(
-          children: [
-            Icon(statusIcon, size: 28, color: statusColor),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    statusTitle,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.5,
-                      color: statusColor,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    statusSubtitle,
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
-                  ),
-                ],
-              ),
-            ),
-            TextButton(
-              onPressed: _isProcessing ? null : _manualSync,
-              child: const Text('Sync Now', style: TextStyle(fontSize: 12)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildQrActionCard() {
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: _openScanner,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 14.0),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(Icons.qr_code_scanner_rounded, color: Colors.blue.shade700, size: 24),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Scan Attendee Pass',
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Text(
-                      'Verify tickets and check-in attendees at this station',
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                    ),
-                  ],
-                ),
-              ),
-              if (_pendingTicketCount > 0)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade100,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '$_pendingTicketCount offline',
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.orange.shade900),
-                  ),
-                ),
-              const SizedBox(width: 4),
-              const Icon(Icons.chevron_right, color: Colors.grey),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCommsActionCard() {
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: _openCommunicationsCenter,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 14.0),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.indigo.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(Icons.forum_outlined, color: Colors.indigo.shade700, size: 24),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Operations Communications',
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    Text(
-                      'Organizer announcements, staff directory & direct messages',
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                    ),
-                  ],
-                ),
-              ),
-              if (_unreadCommsCount > 0)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade100,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '$_unreadCommsCount unread',
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.red.shade900),
-                  ),
-                ),
-              const SizedBox(width: 4),
-              const Icon(Icons.chevron_right, color: Colors.grey),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTelemetryFeedCard() {
-    return Card(
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Live Telemetry Activity',
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                Text(
-                  '${_observations.length} active',
-                  style: const TextStyle(fontSize: 11, color: Colors.grey),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (_observations.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24.0),
-                child: Center(
-                  child: Text(
-                    _isScanning
-                        ? 'Listening for attendee signals nearby...'
-                        : 'Scanner idle. Press "Start BLE Scanner" to detect attendee devices.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                  ),
-                ),
-              )
-            else
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 220),
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: _observations.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (context, index) {
-                    final obs = _observations[index];
-                    return ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(
-                        obs.isSpatiallyDevice ? Icons.bluetooth_connected : Icons.bluetooth,
-                        size: 20,
-                        color: obs.isSpatiallyDevice ? Colors.blue.shade700 : Colors.grey,
-                      ),
-                      title: Text(
-                        obs.ephemeralId,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontFamily: 'monospace',
-                          fontWeight: obs.isSpatiallyDevice ? FontWeight.bold : FontWeight.normal,
-                          color: obs.isSpatiallyDevice ? Colors.blue.shade900 : Colors.black87,
-                        ),
-                      ),
-                      subtitle: Text(
-                        'RSSI: ${obs.rssi} dBm • ${_formatRelativeTime(obs.scannedAt)}',
-                        style: const TextStyle(fontSize: 10, color: Colors.grey),
-                      ),
-                      trailing: obs.isSpatiallyDevice
-                          ? Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.blue.shade50,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                'SPATIALLY',
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.blue.shade800,
-                                ),
-                              ),
-                            )
-                          : null,
-                    );
-                  },
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
   }
 }

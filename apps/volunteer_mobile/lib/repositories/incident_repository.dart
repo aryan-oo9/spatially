@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -120,51 +121,124 @@ class IncidentRepository {
       );
     }
 
-    // Online submission via RPC
+    // Online submission: Try RPC first, then fallback to direct resilient table insert
     final client = Supabase.instance.client;
-    final response = await client.rpc('report_operational_incident', params: {
-      'p_event_id': eventId,
-      'p_category': category.toDbString(),
-      'p_priority': priority.toDbString(),
-      'p_title': title,
-      'p_description': description,
-      'p_zone_id': zoneId,
-      'p_venue_zone_name': venueZoneName,
-      'p_venue_poi_id': venuePoiId,
-      'p_specific_location': specificLocation,
-      'p_image_url': imageUrl,
-      'p_link_operational_message': linkOperationalMessage,
-      'p_reporter_type': 'volunteer',
-    });
+    String? incidentId;
+    String? linkedMsgId;
 
-    if (response is Map<String, dynamic> && response['success'] == true) {
-      final incidentId = response['incident_id'] as String;
-      final linkedMsgId = response['linked_message_id'] as String?;
+    try {
+      final response = await client.rpc('report_operational_incident', params: {
+        'p_event_id': eventId,
+        'p_category': category.toDbString(),
+        'p_priority': priority.toDbString(),
+        'p_title': title,
+        'p_description': description,
+        'p_zone_id': zoneId,
+        'p_venue_zone_name': venueZoneName,
+        'p_venue_poi_id': venuePoiId,
+        'p_specific_location': specificLocation,
+        'p_image_url': imageUrl,
+        'p_link_operational_message': linkOperationalMessage,
+        'p_reporter_type': 'volunteer',
+      });
 
-      return OperationalIncident(
-        id: incidentId,
-        eventId: eventId,
-        reporterType: 'volunteer',
-        reporterId: volunteerId,
-        reporterName: volunteerName,
-        category: category,
-        priority: priority,
-        status: IncidentStatus.open,
-        title: title,
-        description: description,
-        zoneId: zoneId,
-        venueZoneName: venueZoneName,
-        venuePoiId: venuePoiId,
-        specificLocation: specificLocation,
-        imageUrl: imageUrl,
-        linkedMessageId: linkedMsgId,
-        createdAt: DateTime.now(),
-        updatedAt: DateTime.now(),
-        isOfflineQueued: false,
-      );
-    } else {
-      throw Exception('Server failed to record operational incident: $response');
+      if (response is Map<String, dynamic> && response['success'] == true) {
+        incidentId = response['incident_id'] as String?;
+        linkedMsgId = response['linked_message_id'] as String?;
+      }
+    } catch (e) {
+      debugPrint('report_operational_incident RPC failed, falling back to direct DB insert: $e');
     }
+
+    if (incidentId == null) {
+      // Direct resilient DB insert
+      final insertPayload = <String, dynamic>{
+        'event_id': eventId,
+        'reporter_type': 'volunteer',
+        'reporter_id': volunteerId,
+        'reporter_name': volunteerName,
+        'category': category.toDbString(),
+        'priority': priority.toDbString(),
+        'status': 'open',
+        'title': title,
+        'description': description,
+      };
+      if (zoneId != null) insertPayload['zone_id'] = zoneId;
+      if (venuePoiId != null) insertPayload['venue_poi_id'] = venuePoiId;
+      if (specificLocation != null) insertPayload['specific_location'] = specificLocation;
+      if (imageUrl != null) insertPayload['image_url'] = imageUrl;
+
+      final inserted = await client
+          .from('operational_incidents')
+          .insert(insertPayload)
+          .select('id')
+          .single();
+
+      incidentId = inserted['id'] as String;
+
+      // Also log audit record with action = 'created' (valid with check constraint!)
+      try {
+        await client.from('operational_incident_logs').insert({
+          'incident_id': incidentId,
+          'event_id': eventId,
+          'actor_id': volunteerId,
+          'actor_name': volunteerName,
+          'action': 'created',
+          'new_status': 'open',
+          'notes': description,
+        });
+      } catch (logErr) {
+        debugPrint('Failed to insert incident audit log: $logErr');
+      }
+
+      // If linkOperationalMessage is requested, create operational message
+      if (linkOperationalMessage) {
+        try {
+          final msgPayload = <String, dynamic>{
+            'event_id': eventId,
+            'sender_id': volunteerId,
+            'sender_role': 'volunteer',
+            'sender_name': volunteerName,
+            'target_type': zoneId != null ? 'zone' : 'broadcast',
+            'message_type': 'incident_alert',
+            'priority': priority.toDbString(),
+            'body': '🚨 [INCIDENT] $title: $description',
+            'requires_acknowledgment': priority == IncidentPriority.urgent,
+          };
+          if (zoneId != null) msgPayload['zone_id'] = zoneId;
+
+          final msg = await client.from('operational_messages').insert(msgPayload).select('id').maybeSingle();
+
+          if (msg != null) {
+            linkedMsgId = msg['id'] as String?;
+          }
+        } catch (msgErr) {
+          debugPrint('Failed to insert linked operational message: $msgErr');
+        }
+      }
+    }
+
+    return OperationalIncident(
+      id: incidentId,
+      eventId: eventId,
+      reporterType: 'volunteer',
+      reporterId: volunteerId,
+      reporterName: volunteerName,
+      category: category,
+      priority: priority,
+      status: IncidentStatus.open,
+      title: title,
+      description: description,
+      zoneId: zoneId,
+      venueZoneName: venueZoneName,
+      venuePoiId: venuePoiId,
+      specificLocation: specificLocation,
+      imageUrl: imageUrl,
+      linkedMessageId: linkedMsgId,
+      createdAt: DateTime.now(),
+      updatedAt: DateTime.now(),
+      isOfflineQueued: false,
+    );
   }
 
   /// Fetch incidents for the active event.
@@ -396,9 +470,13 @@ class IncidentRepository {
     String? pickupInstructions,
   }) async {
     final client = Supabase.instance.client;
+    String dbStatus = newStatus.toLowerCase();
+    if (dbStatus == 'open') dbStatus = 'submitted';
+    if (dbStatus == 'returned' || dbStatus == 'expired' || dbStatus == 'closed') dbStatus = 'resolved';
+
     final res = await client.rpc('update_lost_found_status', params: {
       'p_report_id': reportId,
-      'p_new_status': newStatus,
+      'p_new_status': dbStatus,
       'p_pickup_instructions': pickupInstructions,
     });
 

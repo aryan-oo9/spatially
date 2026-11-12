@@ -36,6 +36,7 @@ import OrganizerZones from "./pages/OrganizerZones";
 import OrganizerContent from "./pages/OrganizerContent";
 import OrganizerAnalytics from "./pages/OrganizerAnalytics";
 import OrganizerAssistance from "./pages/OrganizerAssistance";
+import OrganizerLostFound from "./pages/OrganizerLostFound";
 import OrganizerMap from "./pages/OrganizerMap";
 import OrganizerVenues from "./pages/OrganizerVenues";
 
@@ -124,6 +125,8 @@ export default function App() {
               <Route path="/organizer/event-logs/:eventId" element={<EventLogs />} />
               <Route path="/organizer/invite" element={<InviteVolunteer />} />
               <Route path="/organizer/incidents" element={<OrganizerIncidents />} />
+              <Route path="/organizer/assistance" element={<OrganizerAssistance />} />
+              <Route path="/organizer/lost-found" element={<OrganizerLostFound />} />
               <Route path="/organizer/volunteers" element={<OrganizerVolunteers />} />
               <Route path="/organizer/tasks" element={<OrganizerTasks />} />
               <Route path="/organizer/comms" element={<OrganizerComms />} />
@@ -132,7 +135,6 @@ export default function App() {
               <Route path="/organizer/sponsors" element={<OrganizerContent />} />
               <Route path="/organizer/content" element={<OrganizerContent />} />
               <Route path="/organizer/analytics" element={<OrganizerAnalytics />} />
-              <Route path="/organizer/assistance" element={<OrganizerAssistance />} />
               <Route path="/organizer/venues" element={<OrganizerVenues />} />
               <Route path="/organizer/map" element={<OrganizerMap />} />
             </Route>

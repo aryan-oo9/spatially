@@ -15,6 +15,7 @@ import {
   LuTrendingUp,
   LuAward,
   LuBuilding,
+  LuPackageSearch,
 } from "react-icons/lu";
 
 const navConfig = {
@@ -47,6 +48,7 @@ const navConfig = {
     { label: "Operations", items: [
       { path: "/organizer/incidents", icon: LuRadar, text: "Incident Command" },
       { path: "/organizer/assistance", icon: LuUsers, text: "Assistance Desk" },
+      { path: "/organizer/lost-found", icon: LuPackageSearch, text: "Lost & Found" },
       { path: "/organizer/volunteers", icon: LuUsers, text: "Staff & Shifts" },
       { path: "/organizer/tasks", icon: LuTicket, text: "Task Delegator" },
       { path: "/organizer/comms", icon: LuMail, text: "Comms Console" },
