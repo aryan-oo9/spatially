@@ -38,6 +38,22 @@ _Avoid_: Schedule, work slot
 An authenticated user holding a ticket to an event. Only registered attendees can hold tickets.
 _Avoid_: Guest, anonymous attendee
 
+**Host Attendee**:
+A registered attendee whose active device acts as the presence carrier for themselves and an accepted proxy companion.
+_Avoid_: Carrier, master, primary phone
+
+**Proxy Attendee**:
+A registered attendee whose phone is powered down or discharging, whose venue presence and zone attendance are temporarily delegated to and represented by an agreed Host Attendee.
+_Avoid_: Ghost attendee, duplicate user, fake attendee, battery buddy
+
+**Proxy Request**:
+An explicit, reciprocal delegation request sent by a discharging attendee to a connected friend, requiring explicit acceptance by the host before attendance delegation begins.
+_Avoid_: Attendance transfer, buddy invite
+
+**Carried Weight**:
+The integer headcount multiplier (default: 1, proxy active: 2+) associated with a Host Attendee's spatial presence signal.
+_Avoid_: Multiplier, crowd boost, extra heads
+
 ### Real-Time Signals & Telemetry
 
 **Volunteer Proximity Telemetry**:

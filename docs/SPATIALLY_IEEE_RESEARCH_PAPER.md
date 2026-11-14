@@ -1,13 +1,13 @@
 # Spatially: Privacy-Preserving Edge Telemetry, Macroscopic Graph Flow Prediction, and Closed-Loop Gamified Crowd Control for Large-Scale Physical Events
 
-**Aryan and Organizer Platform Engineering Team**  
-*Department of Computer Science and Engineering*  
-*Spatially Research & Systems Group*  
-*{aryan, organizer-team}@spatially.io*
+**Aryan Verma, Blaise Rodrigues, Daksh Thakar, Devansh Nayak, and Prof. Ankita Amburle**  
+*Computer Engineering Department*  
+*Fr. Conceicao Rodrigues College of Engineering*  
+*Emails: aryanverma1750@gmail.com, blaiserods26@gmail.com, dakshthakkar296@gmail.com, devanshnayak2006@gmail.com, ankita.amburle@fragnel.edu.in*
 
 ---
 
-***Abstract*—Managing crowd safety and operational coordination across large-scale indoor and multi-level physical venues remains a critical challenge in ubiquitous computing and public safety engineering. Conventional crowd monitoring systems rely either on privacy-invasive biometric surveillance (such as closed-circuit camera arrays and facial or MAC-address tracking) or on computationally heavy deep learning models that suffer from cold-start failures when historical training data for a venue configuration are unavailable. Furthermore, existing event management platforms operate reactively—reporting congestion only after safety thresholds have been breached—and lack closed-loop mechanisms to redistribute pedestrian traffic autonomously. This paper presents *Spatially*, an end-to-end, privacy-preserving spatial event intelligence and crowd coordination platform uniting three operational surfaces: an Attendee Mobile client, a Volunteer Staff Mobile client, and an Organizer Command-and-Control Web Platform. Spatially introduces three primary technical contributions: (1) a zero-PII Bluetooth Low Energy (BLE) proximity telemetry pipeline utilizing rotating 6-byte SHA-256 ephemeral identifiers, sticky service-UUID classification, and an offline-resilient SQLite write-behind outbox; (2) a deterministic, training-free, three-layer macroscopic overcrowding prediction engine that combines irregular-interval Holt double exponential smoothing, boundary-derived spatial topology graphs, mass-conserving hydraulic spillover propagation, and timetable-covariant session surge modeling; and (3) a closed-loop crowd mitigation architecture that couples deterministic volunteer haptics and attention routing with generative AI-driven *Flash Surge Diversion Quests* to incentivize voluntary attendee redistribution toward high-headroom zones. Empirical evaluation across 205 mobile unit and integration tests, physical Android hardware verification, and multi-scale synthetic crowd benchmarks demonstrates that Spatially's prediction engine executes full 25-zone, 15-minute horizon inference in 0.751 ms per call (scaling to 100 zones in 4.724 ms) with zero mass-conservation residual ($< 10^{-6}$) and provides up to 12.3 minutes of early-warning lead time prior to critical foyer bottlenecks during post-keynote dispersals.**
+***Abstract*—Managing crowd safety across large-scale indoor and multi-level venues remains a critical public safety challenge. Conventional monitoring systems rely either on privacy-invasive camera/MAC surveillance or on deep learning models that suffer from cold-start failures in temporary venues lacking historical training data. Furthermore, existing event dashboards operate reactively and lack closed-loop mechanisms to redistribute foot traffic. This paper presents *Spatially*, an end-to-end, privacy-preserving event intelligence and crowd coordination platform uniting Attendee Mobile, Volunteer Mobile, and Organizer Web Command surfaces. Spatially introduces three technical contributions: (1) a zero-PII Bluetooth Low Energy (BLE) telemetry pipeline using rotating 6-byte SHA-256 ephemeral identifiers, sticky service-UUID filtering, and an offline-resilient SQLite outbox; (2) a training-free, three-layer macroscopic overcrowding predictor combining irregular-interval Holt exponential smoothing, floorplan-derived topology graphs, mass-conserving hydraulic spillover, and timetable-driven session surges; and (3) a closed-loop mitigation architecture pairing volunteer waveform haptics with generative AI *Flash Surge Diversion Quests* to incentivize voluntary attendee dispersal. Evaluation across 205 mobile tests, Android hardware trials, and multi-scale benchmarks demonstrates 25-zone, 15-minute inference in 0.751 ms (4.724 ms for 100 zones), exact mass conservation ($< 10^{-6}$ residual), and 12.3-minute early-warning lead times.**
 
 ***Keywords*—Crowd dynamics, Bluetooth Low Energy (BLE), privacy-preserving telemetry, macroscopic pedestrian flow, Holt exponential smoothing, spatial topology graphs, event operations, gamified crowd redirection.**
 
@@ -79,44 +79,59 @@ Spatially is architected as a four-tier cyber-physical system comprising two Flu
 
 ```mermaid
 flowchart TD
-    subgraph Edge["Tier 1: Mobile Edge Sensing and Actuation"]
-        A1["Attendee Mobile: Ephemeral BLE (0xFFFF), Vector Map, Passport"]
-        V1["Volunteer Mobile: BLE Scanner, SQLite v7 Outbox, Waveform Haptics"]
+    subgraph Edge["Tier 1: Privacy-Preserving Mobile Edge Sensing and Field Actuation (Flutter Android)"]
+        subgraph AttApp["Attendee Mobile Client (attendee_mobile)"]
+            A1["Zero-PII BLE Beacon: 0xFFFF 6-Byte SHA-256 Hash Et and Service UUID"]
+            A2["Venue Map and Pass: Multi-Level Vector Map, Live Heatmap, Cryptographic QR Pass"]
+            A3["Passport and Quests: Gamified Stamp Ledger, Flash Diversion Feed, 1-Tap Help"]
+        end
+        subgraph VolApp["Volunteer Staff Mobile Client (volunteer_mobile)"]
+            V1["BLE Scanner Service: RSSI Filter, Sticky UUID Gate, 10s Dedup / 45s Expiry"]
+            V2["SQLite v7 Offline Outbox: spatially_queue.db, observation_queue, Gate QR Sync"]
+            V3["Attention and Haptics: Zero-Double-Count Router, Waveform Haptics, Shift Ops"]
+        end
     end
 
-    subgraph Data["Tier 2: Authoritative PostgreSQL and Realtime Tier"]
-        DB1[("Spatial Schema: venues, venue_levels, venue_zones, event_zones")]
-        DB2[("Telemetry Ledger: volunteer_counts, crowd_zone_snapshots")]
-        DB3[("Operations and RPCs: incidents, shifts, operational_health")]
+    subgraph Data["Tier 2: Authoritative Data, Security and Realtime State Tier (Supabase PostgreSQL - 27 RLS Tables)"]
+        DB1[("Spatial Topology Schema: venues, venue_levels, venue_zones, event_zones, venue_pois")]
+        DB2[("Telemetry and Time-Series Ledger: volunteer_counts, crowd_zone_snapshots, tickets, sessions")]
+        DB3[("Operational Command State: operational_incidents, messages, volunteer_shifts, attendee_engagements")]
+        DB4[("Transactional RPCs and CDC: check_in_ticket (FOR UPDATE), get_event_operational_health, Realtime WebSockets")]
     end
 
-    subgraph Intel["Tier 3: Spatially Intelligence Engine (FastAPI)"]
-        P1["Layer 1: Irregular-Interval Holt Double Exponential Smoother"]
-        P2["Layer 2: 2-Hop Mass-Conserving Graph and Schedule Propagator"]
-        P3["Layer 3: Freshness-Weighted Risk, ETA, and Action Scorer"]
-        Q1["Surge Diversion Agent: Gemini 3.5 Flash Lite + Heuristic Engine"]
+    subgraph Intel["Tier 3: Spatially Intelligence and Prediction Engine (Python FastAPI Microservice Layer)"]
+        P0["Stage 1 Graph Builder: Shared-Border Conductance (0.02) and Cross-Level Connectors to Matrix W"]
+        P1["Stage 2 L1 Velocity Filter: Irregular-Step Clamp and Holt Double Exponential Smoother"]
+        P2["Stage 3 L2 Flow Engine: Gate Surge, Timetable Pull/Dispersal, 2-Hop Hydraulic Spillover"]
+        P3["Stage 4 L3 Risk and ETA Scorer: Freshness Decay, Confidence, Breach ETA, Top-5 Drivers"]
+        Q1["Surge Diversion AI Agent: Gemini 3.5 to 1.5 Flash Cascade and Deterministic Fallback Engine"]
     end
 
-    subgraph Command["Tier 4: Organizer Command Portal (React 19)"]
-        UI1["Multi-Level Vector Venue Map and Live Congestion Heatmap"]
-        UI2["Predicted Overcrowding Panel: ETA Chips, Drivers, Sparklines"]
-        UI3["Incident Command, Shift Matrix, and Surge Quest Dispatch"]
+    subgraph Command["Tier 4: Organizer Command and Control Web Platform (React 19 + Vite + FastAPI Gateway)"]
+        UI1["Multi-Level SVG Venue Editor: Zone/POI Authoring, Connectors, Live Occupancy Heatmap"]
+        UI2["Predicted Overcrowding Console: 15-Min Forecast, Risk Badges, ETA Chips, Driver Bars"]
+        UI3["Incident and Workforce Command: Kanban Triage, MTTA/MTTR SLA, Shift Coverage Matrix"]
+        UI4["Closed-Loop Crowd Actuation: 1-Click Flash Surge Quest Dispatch and Gate Advisories"]
     end
 
-    A1 -->|6-Byte SHA-256 BLE| V1
-    V1 -->|15-30s Batch Upsert| DB2
-    V1 -->|Atomic FOR UPDATE RPCs| DB3
-    A1 <--> DB1
-    A1 <--> DB2
-    DB1 & DB2 --> P1
+    A1 -->|"BLE 0xFFFF Broadcast (Et)"| V1
+    V1 --> V2
+    DB4 -->|"Surge Quests and Alerts (CDC)"| A3
+    A2 <-->|"Map, Pass and Check-In"| DB1
+    V2 -->|"15-30s Outbox Flush (FOR UPDATE)"| DB2
+    DB4 -->|"Haptic Alerts and Shift RPCs"| V3
+    DB1 -->|"Zone Bounds and Connectors"| P0
+    DB2 -->|"Snapshots, Gate Flow and Schedule"| P1
+    P0 --> P1
     P1 --> P2
     P2 --> P3
-    P3 --> UI2
-    DB2 & DB3 -->|Realtime CDC| UI1 & UI3
-    UI2 -->|Trigger Diversion| Q1
-    Q1 -->|Mint Bonus Quest| DB2
+    UI1 -->|"Floorplan and Capacity Config"| DB1
+    P3 -->|"15-Min Forecast, ETA and Drivers"| UI2
+    DB3 <-->|"SLA Telemetry and Broadcasts"| UI3
+    UI4 -->|"1-Click Diversion Trigger"| Q1
+    Q1 -->|"Mint Flash Quest (activities)"| DB3
 ```
-**Fig. 1.** End-to-end system architecture of the Spatially platform illustrating the four functional tiers: Mobile Edge Sensing, Authoritative PostgreSQL/Realtime Data Layer, Deterministic Macroscopic Intelligence Engine, and Organizer Command Portal.
+**Fig. 1.** Two-column system architecture of the Spatially platform across all four operational tiers: (Tier 1) privacy-preserving Flutter Android clients for zero-PII BLE proximity broadcasting, sticky-UUID foreground scanning, offline SQLite v7 outbox queueing, and pocket-friendly haptic routing; (Tier 2) Supabase PostgreSQL data tier with 27 RLS-hardened tables, atomic `FOR UPDATE` ticket RPCs, and Realtime CDC broadcast channels; (Tier 3) Python FastAPI intelligence layer executing the 4-stage macroscopic overcrowding predictor and Gemini 3.5 Flash Lite / deterministic surge diversion agent; and (Tier 4) React 19 Organizer Command Portal for multi-level SVG venue modeling, early-warning risk visualization, and closed-loop crowd actuation.
 
 ### A. Ephemeral BLE Advertising and Sticky Scanner Filtering
 To eliminate personally identifiable information (PII) from spatial telemetry, Spatially decouples ticket ownership from physical presence sensing. Upon initialization, the Attendee Mobile client generates a local UUID v4 device identifier stored strictly in device-local encrypted preferences (`AttendeeIdentity.deviceId`). During an active event, an Android Foreground Service continuously broadcasts a low-power BLE advertisement carrying the custom Spatially 128-bit Service UUID (`f47ac10b-58cc-4372-a567-0e02b2c3d479`) and a 6-byte manufacturer-specific payload under company identifier `0xFFFF`.
@@ -132,7 +147,22 @@ where $\mathrm{Trunc}_{48}(\cdot)$ extracts the leading 48 bits (12 hexadecimal 
 On the receiving end, on-duty volunteers run `BleScannerService` on Android hardware. A practical challenge on Android BLE stacks (observed during hardware validation on Nothing Phone A059P) is **scan-response fragmentation**: the Android Bluetooth controller does not reliably deliver the full 128-bit service UUID list in every secondary scan response packet, and occasionally delivers raw hardware MAC addresses when the `0xFFFF` frame is truncated. To prevent wild oscillations in zone headcounts, `BleScannerService` implements a three-stage state machine:
 1. **Signal Sanity and Ephemeral Extraction:** Scan results with invalid RSSI ($\mathrm{RSSI} = -128\text{ dBm}$) are discarded immediately. If the `0xFFFF` manufacturer data frame is present and has an exact length of 6 bytes, the 12-character hex string is extracted as `ephemeralId`; otherwise, the scanner falls back to the OS-rotated remote identifier.
 2. **Sticky Service-UUID Classification:** The scanner maintains an in-memory set `_confirmedSpatiallyIds`. Once an `ephemeralId` is observed advertising `spatiallyServiceUuid` in *any* packet, it is sticky-classified as a verified Spatially attendee device until its presence expires. Non-Spatially ambient Bluetooth devices (headphones, smartwatches, non-attendee phones) are dropped at the privacy gate prior to SQLite persistence.
-3. **Deduplication and Presence Expiry Window:** To suppress radio multipath chatter while capturing rapid pedestrian turnover, `BleScannerService` enforces a deduplication window $\Delta_{\mathrm{dedup}} = 10\text{ s}$ and a presence timeout $\Delta_{\mathrm{exp}} = 45\text{ s}$. A periodic cleanup timer runs every $10\text{ s}$, evicting any device $d$ whose last-seen timestamp $t_{\mathrm{last}}(d)$ satisfies $t_{\mathrm{now}} - t_{\mathrm{last}}(d) > 45\text{ s}$ from `_activeSpatiallyDevices`.
+3. **Deduplication and Presence Expiry Window:** To suppress radio multipath chatter while capturing rapid pedestrian turnover, `BleScannerService` enforces a deduplication window $\Delta_{\mathrm{dedup}} = 10\text{ s}$ and a presence timeout $\Delta_{\mathrm{exp}} = 45\text{ s}$. A periodic cleanup timer runs every $10\text{ s}$, evicting any device $d$ whose last-seen timestamp $t_{\mathrm{last}}(d)$ satisfies $t_{\mathrm{now}} - t_{\mathrm{last}}(d) > 45\text{ s}$ from `_activeSpatiallyDevices` (Fig. 2).
+
+```mermaid
+flowchart TD
+    S1["1. Raw BLE Advertisement Intake (0xFFFF 6-Byte Payload + RSSI Filter)"]
+    S2["2. Sticky UUID Privacy Gate (spatiallyServiceUuid in _confirmedSpatiallyIds)"]
+    S3["3. Temporal Windowing (10s Deduplication + 45s Presence Expiry)"]
+    S4["4. Durable SQLite v7 Outbox (spatially_queue.db: Observations and Offline Check-Ins)"]
+    S5["5. Cloud Batch Upsert (15-30s Flush to volunteer_counts and crowd_zone_snapshots)"]
+
+    S1 -->|"Valid RSSI > -128 dBm"| S2
+    S2 -->|"Verified Attendee Device (Drops Ambient Devices)"| S3
+    S3 -->|"Active Zone Headcount L_i(t)"| S4
+    S4 -->|"Connectivity Auto-Flush + FOR UPDATE Lock"| S5
+```
+**Fig. 2.** Five-stage volunteer BLE telemetry filtering and offline-resilient SQLite v7 write-behind synchronization pipeline.
 
 ### B. Offline-Resilient Write-Behind Outbox and Atomic Ticketing
 Venue network blackouts frequently occur at main entrances and subterranean exhibition halls. Spatially guarantees zero operational data loss in `volunteer_mobile` via a local SQLite v7 persistence engine (`spatially_queue.db`) containing two critical write-behind queues:
@@ -180,7 +210,7 @@ flowchart TD
     I2 --> H1 --> H2
     G2 & H2 & I3 --> F1 --> F2 --> S1 --> S2
 ```
-**Fig. 2.** Algorithmic pipeline of the Spatially Three-Layer Macroscopic Overcrowding Prediction Engine.
+**Fig. 3.** Algorithmic pipeline of the Spatially Three-Layer Macroscopic Overcrowding Prediction Engine, transforming floorplan bounds into a weighted topology graph $\mathcal{G}$ and propagating two-hop hydraulic spillover.
 
 ### A. Stage 1: Automatic Spatial Topology Graph Construction
 Let $\mathcal{Z} = \{1, 2, \dots, N\}$ denote the set of monitored operational zones for an event. Each zone $i \in \mathcal{Z}$ resides on a discrete architectural floor level $\ell_i \in \mathbb{Z}^+$ and is bounded on the normalized 2D venue canvas $[0, 1]^2$ by an axis-aligned rectangle (Eq. 2):
@@ -321,13 +351,37 @@ $$
 \mathcal{C}_i = \phi(a_i) \cdot \left(0.5 + 0.5 \min\!\left(1.0,\, \frac{m_i}{6}\right)\right) \qquad (16)
 $$
 
-with full-trust threshold $\tau_{\mathrm{full}} = 2.0\text{ min}$ and stale floor $\tau_{\mathrm{zero}} = 10.0\text{ min}$. Finally, when $\mathcal{R}_i \in \{\mathrm{warning}, \mathrm{critical}\}$, Layer 3 inspects $\mathcal{N}(i)$ to identify the adjacent neighbor $j^* = \arg\min_{j \in \mathcal{N}(i)} r_{j,\mathrm{proj}}$ with the lowest projected occupancy ratio, synthesizing an immediate topological redirection directive: *"Redirect foot traffic from Zone $i$ toward Zone $j^*$; stage volunteers at the Zone $i$ entrance."*
+with full-trust threshold $\tau_{\mathrm{full}} = 2.0\text{ min}$ and stale floor $\tau_{\mathrm{zero}} = 10.0\text{ min}$ (Fig. 4). Finally, when $\mathcal{R}_i \in \{\mathrm{warning}, \mathrm{critical}\}$, Layer 3 inspects $\mathcal{N}(i)$ to identify the adjacent neighbor $j^* = \arg\min_{j \in \mathcal{N}(i)} r_{j,\mathrm{proj}}$ with the lowest projected occupancy ratio, synthesizing an immediate topological redirection directive: *"Redirect foot traffic from Zone $i$ toward Zone $j^*$; stage volunteers at the Zone $i$ entrance."*
+
+```mermaid
+xychart-beta
+    title "Fig. 4. Prediction Confidence C_i vs. Telemetry Age a_i (m_i >= 6)"
+    x-axis "Telemetry Age a_i (minutes)" [0, 2, 4, 6, 8, 10, 12]
+    y-axis "Confidence Score C_i" 0.0 --> 1.1
+    line [1.0, 1.0, 0.825, 0.65, 0.475, 0.30, 0.30]
+```
+**Fig. 4.** Prediction confidence $\mathcal{C}_i$ versus telemetry age $a_i$ (Eqs. 15–16), showing the full-trust plateau ($\le 2\text{ min}$) and linear decay to the stale floor ($\ge 10\text{ min}$).
 
 ---
 
 ## V. CLOSED-LOOP OPERATIONAL ACTUATION AND GAMIFIED CROWD DIVERSION
 
-Predicting an impending bottleneck is only half of the operational problem; the platform must also actuate physical changes on the venue floor. Spatially implements a dual-loop actuation architecture targeting both **Volunteer Staff** (top-down tactical dispatch) and **Registered Attendees** (bottom-up behavioral incentivization).
+Predicting an impending bottleneck is only half of the operational problem; the platform must also actuate physical changes on the venue floor. Spatially implements a dual-loop actuation architecture targeting both **Volunteer Staff** (top-down tactical dispatch) and **Registered Attendees** (bottom-up behavioral incentivization), as depicted in Fig. 5.
+
+```mermaid
+flowchart LR
+    P["Overcrowding Predictor (Risk: Warning/Critical, ETA <= 15m)"]
+    T1["Top-Down Staff Loop: Relevance Scorer + Android Waveform Haptics"]
+    T2["Tactical Staging: Throttle Entrance + Atomic Shift Coverage"]
+    B1["Bottom-Up AI Loop: Gemini 3.5 / Heuristic Mints Surge Quest (+150 Pts)"]
+    B2["Voluntary Shift: Attendees Walk to High-Headroom Booth"]
+    V["Physical Venue Floor: Source Load Drops, Target Headroom Utilized"]
+
+    P --> T1 --> T2 --> V
+    P --> B1 --> B2 --> V
+    V -.->|"BLE Telemetry Feedback (15-30s)"| P
+```
+**Fig. 5.** Closed-loop socio-technical crowd actuation combining top-down volunteer haptic dispatch with bottom-up AI gamified surge diversion quests.
 
 ### A. Deterministic Volunteer Attention Routing and Waveform Haptics
 In loud, high-density event environments, volunteers cannot continuously monitor smartphone screens. The Volunteer Mobile application implements an **Event Awareness & Attention Engine** that normalizes multi-source operational signals (broadcasts, incident dispatches, shift coverage requests, and zone overcrowding alerts) into a single prioritized stream. Each incoming signal $e$ is evaluated by a deterministic relevance classifier (Eq. 17) based on the volunteer's active shift record (`volunteer_shifts.zone_id` and `event_team_members.team_id`):
@@ -368,7 +422,19 @@ All backend prediction benchmarks were executed on a standard workstation enviro
 - **Steady Plateau (`plateau`):** Nominal steady-state oscillation between $37\%$ and $47\%$ capacity.
 
 ### B. Canonical Crowd Pattern Evaluation
-Table II presents the quantitative evaluation of the predictor on a 4-zone connected floorplan ($C_0 = 100, C_1 = 150, C_2 = 200, C_3 = 100$; $\theta_{\mathrm{warn}} = 0.80, \theta_{\mathrm{crit}} = 0.90$; forecast horizon $H = 15\text{ min}$) where Zone 0 undergoes `ramp`, Zone 1 undergoes `surge`, Zone 2 undergoes `dispersal`, and Zone 3 maintains `plateau`.
+Fig. 6 and Table II present the quantitative evaluation of the predictor on a 4-zone connected floorplan ($C_0 = 100, C_1 = 150, C_2 = 200, C_3 = 100$; $\theta_{\mathrm{warn}} = 0.80, \theta_{\mathrm{crit}} = 0.90$; forecast horizon $H = 15\text{ min}$) where Zone 0 undergoes `ramp`, Zone 1 undergoes `surge`, Zone 2 undergoes `dispersal`, and Zone 3 maintains `plateau`.
+
+```mermaid
+xychart-beta
+    title "Fig. 6. 20-Minute Crowd Regime Occupancy Trajectories r_i(t)"
+    x-axis "Elapsed Event Time t (minutes)" [0, 4, 8, 12, 16, 20]
+    y-axis "Occupancy Ratio r_i(t)" 0.0 --> 1.05
+    line [0.25, 0.38, 0.52, 0.65, 0.79, 0.92]
+    line [0.35, 0.39, 0.43, 0.54, 0.72, 0.90]
+    line [0.85, 0.66, 0.48, 0.29, 0.15, 0.15]
+    line [0.42, 0.47, 0.37, 0.42, 0.47, 0.40]
+```
+**Fig. 6.** 20-minute occupancy trajectories $r_i(t)$ across the four canonical crowd regimes (`ramp`, `surge`, `dispersal`, and `plateau`) relative to the warning ($0.80$) and critical ($0.90$) thresholds.
 
 **TABLE II: PREDICTION PERFORMANCE ACROSS CROWD REGIMES ($H = 15\text{ MIN}$)**
 
@@ -386,7 +452,17 @@ To isolate the contribution of each algorithmic layer in Spatially's predictor, 
 1. **Baseline (Reactive Snapshot Only):** Evaluates risk strictly from current occupancy $r_{\mathrm{cur}}$.
 2. **Layer 1 Only (Isolated Holt Smoothing):** Applies per-zone trend extrapolation (6)–(7) without spatial graph connections ($\mathcal{E} = \emptyset$).
 3. **Layer 1 + Layer 2 (Graph Hydraulic Spillover, No Timetable):** Enables the spatial adjacency graph $\mathcal{G}$ and 2-hop spillover (12), but omits session schedule covariance (11).
-4. **Full Spatially Predictor (Layer 1 + Layer 2 + Timetable Covariance):** Integrates all three layers including session dispersal/pull and 2-hop cascade propagation.
+4. **Full Spatially Predictor (Layer 1 + Layer 2 + Timetable Covariance):** Integrates all three layers including session dispersal/pull and 2-hop cascade propagation (Fig. 7).
+
+```mermaid
+xychart-beta
+    title "Fig. 7. Ablation Comparison of Projected Ratios (Central Foyer vs. Expo Zone A)"
+    x-axis ["1. Reactive", "2. L1 Holt", "3. L1+L2 Spill", "4. Full Spatially"]
+    y-axis "Projected Occupancy Ratio r_proj" 0.0 --> 1.0
+    bar [0.45, 0.60, 0.77, 0.88]
+    bar [0.27, 0.29, 0.31, 0.66]
+```
+**Fig. 7.** Ablation comparison of 15-minute projected occupancy ratios ($r_{\mathrm{proj}}$) in Central Foyer and Expo Zone A across the four model configurations during a post-keynote dispersal.
 
 **TABLE III: ABLATION STUDY ON 3-ZONE KEYNOTE DISPERSAL CASCADE**
 
@@ -405,7 +481,16 @@ Let $V = |\mathcal{Z}|$ denote the number of monitored zones, $E = |\mathcal{E}|
 - **Stage 2 (Holt Smoothing):** Sorts and filters at most $M$ points per zone in $O(V \cdot M \log M)$ time.
 - **Stage 3 & 4 (Propagation & Scoring):** Executes session transfers in $O(S \cdot \deg(\mathcal{G}))$ and $K$ hops of sorted spillover in $O(K(V \log V + E))$.
 
-Because planar floorplan graphs are sparse ($E = O(V)$) and $M \le 30$ is bounded by a constant window, total time complexity is $O(V^2 + V \log V)$, and space complexity is $O(V + E)$. Table IV reports the empirical execution latency averaged over 200 iterations per scale from $N = 5$ to $N = 100$ zones.
+Because planar floorplan graphs are sparse ($E = O(V)$) and $M \le 30$ is bounded by a constant window, total time complexity is $O(V^2 + V \log V)$, and space complexity is $O(V + E)$. Fig. 8 and Table IV report the empirical execution latency averaged over 200 iterations per scale from $N = 5$ to $N = 100$ zones.
+
+```mermaid
+xychart-beta
+    title "Fig. 8. Single-Thread CPU Inference Latency vs. Monitored Venue Zones (N)"
+    x-axis "Monitored Venue Zones (N)" ["5 Zones", "10 Zones", "25 Zones", "50 Zones", "100 Zones"]
+    y-axis "Mean Latency per Call (ms)" 0.0 --> 5.0
+    line [0.113, 0.236, 0.751, 1.916, 4.724]
+```
+**Fig. 8.** Empirical single-thread CPU inference latency scaling from $N = 5$ to $N = 100$ monitored zones (200-iteration mean).
 
 **TABLE IV: EMPIRICAL INFERENCE LATENCY SCALING ACROSS ZONE COUNTS**
 
