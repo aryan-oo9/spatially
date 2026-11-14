@@ -44,6 +44,8 @@ class LostFoundRepositoryImpl implements LostFoundRepository {
   final Map<String, List<LostFoundReport>> _eventReports = {};
   final List<Map<String, dynamic>> _offlineOutbox = [];
   final StreamController<List<LostFoundReport>> _controller = StreamController<List<LostFoundReport>>.broadcast();
+  final Map<String, Future<List<LostFoundReport>>> _inFlightFetches = {};
+  final Map<String, RealtimeChannel> _channels = {};
 
   LostFoundRepositoryImpl._internal({SupabaseClient? supabase})
       : _supabase = supabase ?? Supabase.instance.client {
@@ -56,14 +58,116 @@ class LostFoundRepositoryImpl implements LostFoundRepository {
     }
   }
 
-  Future<void> _fetchRemoteReports(String eventId) async {
+  /// Ensures we always query Supabase with a valid event UUID rather than a placeholder string.
+  Future<String> _resolveValidEventId(String rawEventId) async {
+    final trimmed = rawEventId.trim();
+    final isUuid = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(trimmed);
+    if (isUuid) return trimmed;
+
+    // If eventId is 'demo_event' or empty or invalid UUID, find actual event UUID
     try {
-      final response = await _supabase
+      final user = _supabase.auth.currentUser;
+      if (user != null) {
+        final tickets = await _supabase
+            .from('tickets')
+            .select('event_id')
+            .eq('user_id', user.id)
+            .order('purchased_at', ascending: false)
+            .limit(1);
+        if ((tickets as List).isNotEmpty && tickets.first['event_id'] != null) {
+          return tickets.first['event_id'].toString();
+        }
+      }
+
+      // Check for live event
+      final liveRes = await _supabase
+          .from('events')
+          .select('id')
+          .eq('status', 'live')
+          .limit(1);
+      if ((liveRes as List).isNotEmpty && liveRes.first['id'] != null) {
+        return liveRes.first['id'].toString();
+      }
+
+      // Check for upcoming event
+      final upcomingRes = await _supabase
+          .from('events')
+          .select('id')
+          .order('event_start_time', ascending: true)
+          .limit(1);
+      if ((upcomingRes as List).isNotEmpty && upcomingRes.first['id'] != null) {
+        return upcomingRes.first['id'].toString();
+      }
+    } catch (e) {
+      debugPrint('Notice resolving fallback event ID for Lost & Found: $e');
+    }
+
+    return trimmed;
+  }
+
+  void _subscribeRealtime(String eventId) {
+    if (_channels.containsKey(eventId)) return;
+
+    try {
+      final channel = _supabase.channel('attendee-lost-found-$eventId');
+      channel
+          .onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'lost_found_reports',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'event_id',
+              value: eventId,
+            ),
+            callback: (payload) {
+              debugPrint('LostFoundRepository: Realtime sync trigger (${payload.eventType})');
+              _fetchRemoteReports(eventId, notifyStream: true).catchError((_) => <LostFoundReport>[]);
+            },
+          )
+          .subscribe();
+      _channels[eventId] = channel;
+    } catch (e) {
+      debugPrint('Notice: Realtime subscription on lost_found_reports unavailable: $e');
+    }
+  }
+
+  Future<List<LostFoundReport>> _fetchRemoteReports(String rawEventId, {bool notifyStream = true}) async {
+    final eventId = await _resolveValidEventId(rawEventId);
+    _subscribeRealtime(eventId);
+
+    if (_inFlightFetches.containsKey(eventId)) {
+      return await _inFlightFetches[eventId]!;
+    }
+
+    final future = _doFetchRemoteReports(eventId, rawEventId, notifyStream: notifyStream);
+    _inFlightFetches[eventId] = future;
+    try {
+      return await future;
+    } finally {
+      _inFlightFetches.remove(eventId);
+    }
+  }
+
+  Future<List<LostFoundReport>> _doFetchRemoteReports(
+    String eventId,
+    String rawEventId, {
+    bool notifyStream = true,
+  }) async {
+    try {
+      final isUuid = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(eventId);
+
+      var query = _supabase
           .from('lost_found_reports')
-          .select('*, event_zones(name)')
-          .eq('event_id', eventId)
+          .select('*, event_zones(name)');
+
+      if (isUuid) {
+        query = query.eq('event_id', eventId);
+      }
+
+      final response = await query
           .order('created_at', ascending: false)
-          .timeout(const Duration(seconds: 4));
+          .timeout(const Duration(seconds: 5));
 
       final myDeviceId = AttendeeIdentity.deviceId;
       final myUserId = _supabase.auth.currentUser?.id;
@@ -115,13 +219,22 @@ class LostFoundRepositoryImpl implements LostFoundRepository {
       final existingLocal = _eventReports[eventId] ?? [];
       final pendingDrafts = existingLocal.where((r) => r.status == LostFoundStatus.pendingSync).toList();
 
-      // Combine remote reports with any local un-synced pending drafts
-      _eventReports[eventId] = [...pendingDrafts, ...remoteReports];
-      _controller.add(List.unmodifiable(_eventReports[eventId]!));
+      final merged = [...pendingDrafts, ...remoteReports];
+      _eventReports[eventId] = merged;
+      if (rawEventId != eventId) {
+        _eventReports[rawEventId] = merged;
+      }
+
+      if (notifyStream) {
+        _controller.add(List.unmodifiable(merged));
+      }
+      return merged;
     } catch (e) {
-      // Backend table 'lost_found_reports' is not provisioned or network query failed.
-      // Explicitly notify controller with error so stream terminates cleanly rather than hanging.
-      debugPrint('LostFoundRepository: Remote fetch failed ($e). Emitting honest error.');
+      debugPrint('LostFoundRepository: Remote fetch encountered error: $e');
+      final existingLocal = _eventReports[eventId] ?? _eventReports[rawEventId] ?? [];
+      if (existingLocal.isNotEmpty) {
+        return existingLocal;
+      }
       _controller.addError(const LostFoundUnavailableException());
       throw const LostFoundUnavailableException();
     }
@@ -129,7 +242,7 @@ class LostFoundRepositoryImpl implements LostFoundRepository {
 
   @override
   Stream<List<LostFoundReport>> getReportsStream(String eventId) {
-    _fetchRemoteReports(eventId);
+    _fetchRemoteReports(eventId, notifyStream: true).catchError((_) => <LostFoundReport>[]);
     return _controller.stream;
   }
 
@@ -139,9 +252,9 @@ class LostFoundRepositoryImpl implements LostFoundRepository {
     LostFoundType? type,
     bool onlyMyReports = false,
   }) async {
-    await _fetchRemoteReports(eventId);
+    final all = await _fetchRemoteReports(eventId, notifyStream: false);
 
-    var list = _eventReports[eventId] ?? [];
+    var list = all;
     if (type != null) {
       list = list.where((r) => r.type == type).toList();
     }
@@ -164,6 +277,7 @@ class LostFoundRepositoryImpl implements LostFoundRepository {
     String? specificLocation,
     String? imagePlaceholderName,
   }) async {
+    final effectiveEventId = await _resolveValidEventId(eventId);
     final isOnline = OfflineService().isOnline;
     final myDeviceId = AttendeeIdentity.deviceId ?? 'guest_device';
     final myUserId = _supabase.auth.currentUser?.id;
@@ -176,7 +290,7 @@ class LostFoundRepositoryImpl implements LostFoundRepository {
       try {
         final isUuid = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(venueZoneId);
         final payload = {
-          'event_id': eventId,
+          'event_id': effectiveEventId,
           'reporter_device_id': myDeviceId,
           'reporter_user_id': myUserId,
           'report_type': type.name,
@@ -199,7 +313,7 @@ class LostFoundRepositoryImpl implements LostFoundRepository {
 
         final newReport = LostFoundReport(
           id: inserted['id']?.toString() ?? 'lf_${DateTime.now().millisecondsSinceEpoch}',
-          eventId: eventId,
+          eventId: effectiveEventId,
           type: type,
           category: category,
           title: title,
@@ -214,9 +328,12 @@ class LostFoundRepositoryImpl implements LostFoundRepository {
           pickupInstructions: instructions,
         );
 
-        final list = _eventReports[eventId] ?? [];
+        final list = _eventReports[effectiveEventId] ?? [];
         list.insert(0, newReport);
-        _eventReports[eventId] = list;
+        _eventReports[effectiveEventId] = list;
+        if (eventId != effectiveEventId) {
+          _eventReports[eventId] = list;
+        }
         _controller.add(List.unmodifiable(list));
         return newReport;
       } catch (e) {
@@ -226,10 +343,9 @@ class LostFoundRepositoryImpl implements LostFoundRepository {
     }
 
     // Offline or network error: Save locally as pendingSync
-    final isUuid = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(venueZoneId);
     final offlineReport = LostFoundReport(
       id: 'lf_pending_${DateTime.now().millisecondsSinceEpoch}',
-      eventId: eventId,
+      eventId: effectiveEventId,
       type: type,
       category: category,
       title: title,
@@ -244,10 +360,11 @@ class LostFoundRepositoryImpl implements LostFoundRepository {
       pickupInstructions: 'Draft saved locally offline. Will be submitted once connectivity is restored.',
     );
 
+    final isUuid = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(venueZoneId);
     _offlineOutbox.add({
       'report': offlineReport,
       'payload': {
-        'event_id': eventId,
+        'event_id': effectiveEventId,
         'reporter_device_id': myDeviceId,
         'reporter_user_id': myUserId,
         'report_type': type.name,
@@ -262,9 +379,12 @@ class LostFoundRepositoryImpl implements LostFoundRepository {
       }
     });
 
-    final list = _eventReports[eventId] ?? [];
+    final list = _eventReports[effectiveEventId] ?? [];
     list.insert(0, offlineReport);
-    _eventReports[eventId] = list;
+    _eventReports[effectiveEventId] = list;
+    if (eventId != effectiveEventId) {
+      _eventReports[eventId] = list;
+    }
     _controller.add(List.unmodifiable(list));
 
     return offlineReport;

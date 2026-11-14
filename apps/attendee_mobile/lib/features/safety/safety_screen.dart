@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../design_system/design_system.dart';
-import '../../services/attendee_identity.dart';
 import '../../services/offline_service.dart';
 import '../explore/data/event_cache_manager.dart';
 import '../explore/models/spatially_event.dart';
@@ -94,12 +93,13 @@ class _SafetyScreenState extends State<SafetyScreen> {
         return;
       }
 
-      final attendeeId = AttendeeIdentity.deviceId;
-      if (attendeeId != null) {
+      // 1. Try resolving event from authenticated user's ticket pass
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user != null) {
         final ticketData = await Supabase.instance.client
             .from('tickets')
-            .select('*, events(*)')
-            .eq('attendee_id', attendeeId)
+            .select('*, events(*, venues(*))')
+            .eq('user_id', user.id)
             .order('purchased_at', ascending: false)
             .timeout(const Duration(seconds: 4));
 
@@ -111,27 +111,42 @@ class _SafetyScreenState extends State<SafetyScreen> {
               if (ev.isLive) {
                 _currentEvent = ev;
                 return;
-              } else if (_currentEvent == null && ev.isUpcoming) {
-                _currentEvent = ev;
+              } else {
+                _currentEvent ??= ev;
               }
             }
           }
+          if (_currentEvent != null) return;
         }
       }
 
-      if (_currentEvent == null) {
-        final liveEvents = await Supabase.instance.client
-            .from('events')
-            .select()
-            .eq('status', 'live')
-            .limit(1)
-            .timeout(const Duration(seconds: 3));
+      // 2. Fall back to live events in the system
+      final liveEvents = await Supabase.instance.client
+          .from('events')
+          .select('*, venues(*)')
+          .eq('status', 'live')
+          .limit(1)
+          .timeout(const Duration(seconds: 3));
 
-        if (liveEvents.isNotEmpty) {
-          _currentEvent = SpatiallyEvent.fromJson(Map<String, dynamic>.from(liveEvents.first));
-        }
+      if (liveEvents.isNotEmpty) {
+        _currentEvent = SpatiallyEvent.fromJson(Map<String, dynamic>.from(liveEvents.first));
+        return;
       }
-    } catch (_) {
+
+      // 3. Fall back to nearest upcoming event
+      final upcomingEvents = await Supabase.instance.client
+          .from('events')
+          .select('*, venues(*)')
+          .order('event_start_time', ascending: true)
+          .limit(1)
+          .timeout(const Duration(seconds: 3));
+
+      if (upcomingEvents.isNotEmpty) {
+        _currentEvent = SpatiallyEvent.fromJson(Map<String, dynamic>.from(upcomingEvents.first));
+        return;
+      }
+    } catch (e) {
+      debugPrint('SafetyScreen: Notice resolving event context: $e');
       final cached = await EventCacheManager().getCachedPrimaryEvent();
       if (cached != null) {
         _currentEvent = SpatiallyEvent.fromJson(cached);

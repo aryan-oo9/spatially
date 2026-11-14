@@ -54,10 +54,19 @@ class _ReportItemScreenState extends State<ReportItemScreen> {
 
   Future<void> _loadEventZones() async {
     try {
+      String effectiveEventId = widget.eventId.trim();
+      final isUuid = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(effectiveEventId);
+      if (!isUuid) {
+        final evRes = await Supabase.instance.client.from('events').select('id').limit(1);
+        if ((evRes as List).isNotEmpty && evRes.first['id'] != null) {
+          effectiveEventId = evRes.first['id'].toString();
+        }
+      }
+
       final res = await Supabase.instance.client
           .from('event_zones')
           .select('id, name')
-          .eq('event_id', widget.eventId)
+          .eq('event_id', effectiveEventId)
           .order('name');
       if (mounted && (res as List).isNotEmpty) {
         setState(() {

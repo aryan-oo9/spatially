@@ -33,6 +33,7 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
   final LostFoundRepository _repository = LostFoundRepositoryImpl();
 
   _FilterTab _selectedTab = _FilterTab.all;
+  List<LostFoundReport> _allReports = [];
   List<LostFoundReport> _reports = [];
   bool _isLoading = true;
   String? _errorMessage;
@@ -41,26 +42,33 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
   @override
   void initState() {
     super.initState();
-    _loadReports();
+    _loadReports(showLoading: true);
     _streamSub = _repository.getReportsStream(widget.eventId).listen(
-      (_) {
-        if (mounted) _loadReports();
+      (reports) {
+        if (!mounted) return;
+        setState(() {
+          _allReports = reports;
+          _applyFilter();
+          _isLoading = false;
+          _errorMessage = null;
+        });
       },
       onError: (err) {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
+        if (!mounted) return;
+        setState(() {
+          _isLoading = false;
+          if (_allReports.isEmpty) {
             _errorMessage = err?.toString() ??
                 'Lost & Found digital logging service is currently unavailable for this event. Please report or claim items in person at the Central Help Desk (Room 712 Foyer).';
-          });
-        }
+          }
+        });
       },
     );
     OfflineService().isOnlineNotifier.addListener(_onOnlineChanged);
   }
 
   void _onOnlineChanged() {
-    if (mounted) _loadReports();
+    if (mounted) _loadReports(showLoading: false);
   }
 
   @override
@@ -70,41 +78,39 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
     super.dispose();
   }
 
-  Future<void> _loadReports() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+  void _applyFilter() {
+    switch (_selectedTab) {
+      case _FilterTab.all:
+        _reports = _allReports;
+        break;
+      case _FilterTab.lost:
+        _reports = _allReports.where((r) => r.type == LostFoundType.lost).toList();
+        break;
+      case _FilterTab.found:
+        _reports = _allReports.where((r) => r.type == LostFoundType.found).toList();
+        break;
+      case _FilterTab.myReports:
+        _reports = _allReports.where((r) => r.isCurrentUser).toList();
+        break;
+    }
+  }
+
+  Future<void> _loadReports({bool showLoading = true}) async {
+    if (showLoading && _allReports.isEmpty) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
 
     try {
       await OfflineService().checkConnectivity();
-      LostFoundType? type;
-      bool onlyMine = false;
-
-      switch (_selectedTab) {
-        case _FilterTab.all:
-          type = null;
-          break;
-        case _FilterTab.lost:
-          type = LostFoundType.lost;
-          break;
-        case _FilterTab.found:
-          type = LostFoundType.found;
-          break;
-        case _FilterTab.myReports:
-          onlyMine = true;
-          break;
-      }
-
-      final items = await _repository.getReports(
-        widget.eventId,
-        type: type,
-        onlyMyReports: onlyMine,
-      );
+      final items = await _repository.getReports(widget.eventId);
 
       if (mounted) {
         setState(() {
-          _reports = items;
+          _allReports = items;
+          _applyFilter();
           _isLoading = false;
           _errorMessage = null;
         });
@@ -112,14 +118,23 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _reports = [];
           _isLoading = false;
-          _errorMessage = e is LostFoundUnavailableException
-              ? e.message
-              : 'Lost & Found digital logging service is currently unavailable for this event. Please report or claim items in person at the Central Help Desk (Room 712 Foyer).';
+          if (_allReports.isEmpty) {
+            _errorMessage = e is LostFoundUnavailableException
+                ? e.message
+                : 'Lost & Found digital logging service is currently unavailable for this event. Please report or claim items in person at the Central Help Desk (Room 712 Foyer).';
+          }
         });
       }
     }
+  }
+
+  void _onTabSelected(_FilterTab tab) {
+    if (_selectedTab == tab) return;
+    setState(() {
+      _selectedTab = tab;
+      _applyFilter();
+    });
   }
 
   Future<void> _openReportFlow(LostFoundType type) async {
@@ -134,7 +149,7 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
     );
 
     if (result != null && mounted) {
-      _loadReports();
+      _loadReports(showLoading: false);
     }
   }
 
@@ -328,10 +343,7 @@ class _LostFoundScreenState extends State<LostFoundScreen> {
       selected: isSelected,
       onSelected: (selected) {
         if (selected) {
-          setState(() {
-            _selectedTab = tab;
-          });
-          _loadReports();
+          _onTabSelected(tab);
         }
       },
       selectedColor: SpatiallyColors.violet,
