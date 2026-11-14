@@ -49,7 +49,7 @@ class WalletTransaction {
       timestamp: json['timestamp'] != null
           ? DateTime.tryParse(json['timestamp'].toString())?.toLocal() ?? DateTime.now()
           : DateTime.now(),
-      referenceId: json['reference_id']?.toString(),
+      referenceId: json['reference_id']?.toString() ?? json['referenceId']?.toString(),
       metadata: json['metadata'] as Map<String, dynamic>?,
     );
   }

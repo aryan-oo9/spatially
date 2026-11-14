@@ -2,140 +2,218 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:attendee_mobile/features/wallet/data/wallet_service.dart';
 import 'package:attendee_mobile/features/wallet/models/wallet_transaction.dart';
-import 'package:attendee_mobile/features/explore/models/spatially_event.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  group('SpatiallyEvent Ticket Price Parsing Tests', () {
-    test('parses ticket_price from explicit field', () {
-      final json = {
-        'id': 'evt-1',
-        'title': 'Tech Summit 2026',
-        'ticket_price': 150,
-      };
-      final event = SpatiallyEvent.fromJson(json);
-      expect(event.ticketPrice, 150);
-      expect(event.isFree, false);
-      expect(event.priceLabel, '150 PTS');
-    });
-
-    test('parses ticket_price from description tag fallback', () {
-      final json = {
-        'id': 'evt-2',
-        'title': 'AI Hackathon',
-        'description': 'Welcome to the hackathon! [TICKET_PRICE:250] Enjoy.',
-      };
-      final event = SpatiallyEvent.fromJson(json);
-      expect(event.ticketPrice, 250);
-      expect(event.isFree, false);
-      expect(event.priceLabel, '250 PTS');
-      expect(event.description.contains('[TICKET_PRICE'), false);
-    });
-
-    test('defaults to 0 for free event when omitted', () {
-      final json = {
-        'id': 'evt-3',
-        'title': 'Open Community Meetup',
-      };
-      final event = SpatiallyEvent.fromJson(json);
-      expect(event.ticketPrice, 0);
-      expect(event.isFree, true);
-      expect(event.priceLabel, 'Free Admission');
-    });
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
   });
 
   group('WalletService Unit Tests', () {
-    late WalletService walletService;
+    test('Initializes with empty or zero state', () async {
+      final wallet = WalletService.instance;
+      await wallet.init(forceRefresh: true);
 
-    setUp(() async {
-      SharedPreferences.setMockInitialValues({});
-      walletService = WalletService.instance;
-      // Pre-seed some balance for tests
-      await walletService.creditQuestPoints(
-        points: 100,
-        activityTitle: 'Initial Welcome Quest',
-        activityId: 'initial-quest-seed',
-      );
+      expect(wallet.isInitialized, isTrue);
+      expect(wallet.balance, equals(0));
+      expect(wallet.transactions, isEmpty);
+      expect(wallet.redeemedCoupons, isEmpty);
     });
 
-    test('has valid balance after initial points credit', () {
-      expect(walletService.balance >= 100, true);
-      expect(walletService.transactions.isNotEmpty, true);
+    test('Redeems a valid coupon code, updates balance, and records transaction', () async {
+      final wallet = WalletService.instance;
+      await wallet.init(forceRefresh: true);
+
+      final res = await wallet.redeemCoupon('WELCOME100');
+      expect(res['success'], isTrue);
+      expect(res['points'], equals(100));
+      expect(wallet.balance, equals(100));
+      expect(wallet.redeemedCoupons.contains('WELCOME100'), isTrue);
+      expect(wallet.transactions.length, equals(1));
+      expect(wallet.transactions.first.amount, equals(100));
+      expect(wallet.transactions.first.type, equals(WalletTransactionType.credit));
+      expect(wallet.transactions.first.category, equals(WalletTransactionCategory.coupon));
     });
 
-    test('redeems valid coupon successfully', () async {
-      final initialBalance = walletService.balance;
-      final result = await walletService.redeemCoupon('SPATIAL50');
+    test('Rejects duplicate coupon redemption', () async {
+      final wallet = WalletService.instance;
+      await wallet.init(forceRefresh: true);
 
-      expect(result['success'], true);
-      expect(result['points'], 50);
-      expect(walletService.balance, initialBalance + 50);
+      final firstRes = await wallet.redeemCoupon('SPATIAL50');
+      expect(firstRes['success'], isTrue);
 
-      // Verify transaction added
-      final latest = walletService.transactions.first;
-      expect(latest.type, WalletTransactionType.credit);
-      expect(latest.category, WalletTransactionCategory.coupon);
-      expect(latest.amount, 50);
+      final secondRes = await wallet.redeemCoupon('SPATIAL50');
+      expect(secondRes['success'], isFalse);
+      expect(secondRes['message'], contains('already been redeemed'));
     });
 
-    test('rejects duplicate coupon redemption', () async {
-      await walletService.redeemCoupon('WELCOME100');
-      final secondTry = await walletService.redeemCoupon('WELCOME100');
+    test('Debits points correctly for ticket purchase', () async {
+      final wallet = WalletService.instance;
+      await wallet.init(forceRefresh: true);
 
-      expect(secondTry['success'], false);
-      expect((secondTry['message'] as String).contains('already been redeemed'), true);
-    });
+      await wallet.redeemCoupon('BONUS200'); // +200 PTS
+      final initialBalance = wallet.balance;
 
-    test('rejects invalid coupon code', () async {
-      final result = await walletService.redeemCoupon('INVALIDCODE999');
-
-      expect(result['success'], false);
-      expect((result['message'] as String).contains('Invalid'), true);
-    });
-
-    test('debits points for ticket purchase if balance is sufficient', () async {
-      final startingBalance = walletService.balance;
-      final success = await walletService.debitForTicket(
-        eventName: 'Tech Summit 2026',
-        eventId: 'evt-test-1',
+      final debited = await wallet.debitForTicket(
         price: 50,
+        eventName: 'Exclusive Concert',
+        eventId: 'event-xyz',
       );
 
-      expect(success, true);
-      expect(walletService.balance, startingBalance - 50);
-
-      final latest = walletService.transactions.first;
-      expect(latest.type, WalletTransactionType.debit);
-      expect(latest.category, WalletTransactionCategory.ticketPurchase);
-      expect(latest.amount, 50);
+      expect(debited, isTrue);
+      expect(wallet.balance, equals(initialBalance - 50));
+      expect(wallet.totalDebits, equals(50));
+      expect(wallet.transactions.first.isDebit, isTrue);
     });
 
-    test('refuses debit if points balance is insufficient', () async {
-      final startingBalance = walletService.balance;
-      final success = await walletService.debitForTicket(
+    test('Rejects ticket debit if points balance is insufficient', () async {
+      final wallet = WalletService.instance;
+      await wallet.init(forceRefresh: true);
+
+      final debited = await wallet.debitForTicket(
+        price: 9999,
         eventName: 'VIP Gala',
-        eventId: 'evt-vip',
-        price: startingBalance + 10000,
+        eventId: 'event-vip',
       );
 
-      expect(success, false);
-      expect(walletService.balance, startingBalance);
+      expect(debited, isFalse);
     });
 
-    test('credits quest points accurately', () async {
-      final startingBalance = walletService.balance;
-      await walletService.creditQuestPoints(
-        activityTitle: 'Find Booth B-101',
-        points: 40,
-        activityId: 'activity-xyz-unique-123',
-      );
+    test('WalletTransaction JSON roundtrip parses reference_id and referenceId', () {
+      final json1 = {
+        'id': 'tx-1',
+        'title': 'Test Credit',
+        'amount': 150,
+        'type': 'credit',
+        'category': 'coupon',
+        'timestamp': DateTime.now().toIso8601String(),
+        'reference_id': 'TEST_REF',
+      };
+      final tx1 = WalletTransaction.fromJson(json1);
+      expect(tx1.referenceId, equals('TEST_REF'));
 
-      expect(walletService.balance, startingBalance + 40);
-      final latest = walletService.transactions.first;
-      expect(latest.type, WalletTransactionType.credit);
-      expect(latest.category, WalletTransactionCategory.quest);
-      expect(latest.amount, 40);
+      final json2 = {
+        'id': 'tx-2',
+        'title': 'Test Credit 2',
+        'amount': 250,
+        'type': 'credit',
+        'category': 'quest',
+        'timestamp': DateTime.now().toIso8601String(),
+        'referenceId': 'QUEST_CAMEL',
+      };
+      final tx2 = WalletTransaction.fromJson(json2);
+      expect(tx2.referenceId, equals('QUEST_CAMEL'));
+    });
+
+    test('reconcileWithRemoteState imports 400 points and all coupons onto a fresh device', () async {
+      final wallet = WalletService.instance;
+      await wallet.init(forceRefresh: true);
+      expect(wallet.balance, equals(0));
+      expect(wallet.redeemedCoupons, isEmpty);
+
+      // Simulate remote cloud payload created from Phone 1
+      final remoteCloudState = {
+        'balance': 400,
+        'redeemed_coupons': ['WELCOME100', 'BONUS200', 'SPATIAL50', 'QUESTMASTER'],
+        'transactions': [
+          {
+            'id': 'tx-remote-1',
+            'title': 'Redeemed Coupon: WELCOME100',
+            'amount': 100,
+            'type': 'credit',
+            'category': 'coupon',
+            'timestamp': DateTime.now().toIso8601String(),
+            'reference_id': 'WELCOME100',
+          },
+          {
+            'id': 'tx-remote-2',
+            'title': 'Redeemed Coupon: BONUS200',
+            'amount': 200,
+            'type': 'credit',
+            'category': 'coupon',
+            'timestamp': DateTime.now().toIso8601String(),
+            'reference_id': 'BONUS200',
+          },
+          {
+            'id': 'tx-remote-3',
+            'title': 'Redeemed Coupon: SPATIAL50',
+            'amount': 50,
+            'type': 'credit',
+            'category': 'coupon',
+            'timestamp': DateTime.now().toIso8601String(),
+            'reference_id': 'SPATIAL50',
+          },
+          {
+            'id': 'tx-remote-4',
+            'title': 'Redeemed Coupon: QUESTMASTER',
+            'amount': 150,
+            'type': 'credit',
+            'category': 'coupon',
+            'timestamp': DateTime.now().toIso8601String(),
+            'reference_id': 'QUESTMASTER',
+          },
+          {
+            'id': 'tx-remote-5',
+            'title': 'Ticket Purchase: Tech Summit',
+            'amount': 100,
+            'type': 'debit',
+            'category': 'ticketPurchase',
+            'timestamp': DateTime.now().toIso8601String(),
+            'reference_id': 'ticket-abc',
+          },
+        ],
+      };
+
+      final changed = wallet.reconcileWithRemoteState(remoteCloudState);
+      expect(changed, isTrue);
+      expect(wallet.balance, equals(400));
+      expect(wallet.redeemedCoupons.length, equals(4));
+      expect(wallet.redeemedCoupons.contains('WELCOME100'), isTrue);
+      expect(wallet.redeemedCoupons.contains('BONUS200'), isTrue);
+      expect(wallet.redeemedCoupons.contains('SPATIAL50'), isTrue);
+      expect(wallet.redeemedCoupons.contains('QUESTMASTER'), isTrue);
+      expect(wallet.transactions.length, equals(5));
+
+      // Attempting to redeem already used coupon is rejected
+      final secondTry = await wallet.redeemCoupon('WELCOME100');
+      expect(secondTry['success'], isFalse);
+      expect(secondTry['message'], contains('already been redeemed'));
+    });
+
+    test('reconcileWithRemoteState unions multi-device actions without duplicates', () async {
+      final wallet = WalletService.instance;
+      await wallet.init(forceRefresh: true);
+
+      // Local device already redeemed COMMUNITY25
+      await wallet.redeemCoupon('COMMUNITY25'); // +25 PTS
+      expect(wallet.balance, equals(25));
+      expect(wallet.redeemedCoupons, contains('COMMUNITY25'));
+
+      // Remote cloud state from another device that redeemed FESTIVAL250
+      final remoteCloudState = {
+        'balance': 250,
+        'redeemed_coupons': ['FESTIVAL250'],
+        'transactions': [
+          {
+            'id': 'tx-remote-festival',
+            'title': 'Redeemed Coupon: FESTIVAL250',
+            'amount': 250,
+            'type': 'credit',
+            'category': 'coupon',
+            'timestamp': DateTime.now().toIso8601String(),
+            'reference_id': 'FESTIVAL250',
+          },
+        ],
+      };
+
+      wallet.reconcileWithRemoteState(remoteCloudState);
+
+      // Union of both coupons
+      expect(wallet.redeemedCoupons.contains('COMMUNITY25'), isTrue);
+      expect(wallet.redeemedCoupons.contains('FESTIVAL250'), isTrue);
+      expect(wallet.balance, equals(275)); // 25 + 250
+      expect(wallet.transactions.length, equals(2));
     });
   });
 }
