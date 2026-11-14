@@ -5,6 +5,7 @@ import 'package:volunteer_mobile/models/ble_observation.dart';
 import 'package:volunteer_mobile/models/event_zone.dart';
 import 'package:volunteer_mobile/models/ticket_check_in_result.dart';
 import 'package:volunteer_mobile/models/volunteer_assignment.dart';
+import 'package:volunteer_mobile/models/event_invitation.dart';
 import 'package:volunteer_mobile/repositories/volunteer_assignment_repository.dart';
 import 'package:volunteer_mobile/repositories/ticket_check_in_repository.dart';
 import 'package:volunteer_mobile/screens/event_picker_screen.dart';
@@ -52,6 +53,18 @@ class MockVolunteerAssignmentRepository implements VolunteerAssignmentRepository
     required String zoneId,
     String? zoneName,
   }) async {}
+
+  @override
+  Future<List<EventInvitation>> getPendingInvitations({
+    required String volunteerId,
+    String? email,
+  }) async => [];
+
+  @override
+  Future<void> acceptInvitation(EventInvitation invitation) async {}
+
+  @override
+  Future<void> declineInvitation(String invitationId) async {}
 }
 
 class MockTicketCheckInRepository implements TicketCheckInRepository {

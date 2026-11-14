@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/volunteer_assignment.dart';
 import '../models/event_zone.dart';
+import '../models/event_invitation.dart';
 
 abstract class VolunteerAssignmentRepository {
   /// Fetches the authoritative user role from public.profiles.
@@ -8,6 +10,18 @@ abstract class VolunteerAssignmentRepository {
 
   /// Fetches active assignments for the given volunteer, including joined event and zone.
   Future<List<VolunteerAssignment>> getAssignments(String volunteerId);
+
+  /// Fetches pending invitations for the volunteer by ID or email.
+  Future<List<EventInvitation>> getPendingInvitations({
+    required String volunteerId,
+    String? email,
+  }) async => [];
+
+  /// Accepts an event invitation and activates assignment.
+  Future<void> acceptInvitation(EventInvitation invitation) async {}
+
+  /// Declines an event invitation.
+  Future<void> declineInvitation(String invitationId) async {}
 
   /// Fetches normalized zones for the specified event from public.event_zones.
   Future<List<EventZone>> getEventZones(String eventId);
@@ -69,6 +83,132 @@ class VolunteerAssignmentRepositoryImpl implements VolunteerAssignmentRepository
       return list;
     } catch (e) {
       print('VolunteerAssignmentRepository ERROR fetching assignments: $e');
+      rethrow;
+    }
+  }
+
+  @override
+  Future<List<EventInvitation>> getPendingInvitations({
+    required String volunteerId,
+    String? email,
+  }) async {
+    try {
+      var query = _supabase
+          .from('event_invitations')
+          .select('*, events(*)');
+
+      if (email != null && email.isNotEmpty) {
+        query = query.or('volunteer_id.eq.$volunteerId,volunteer_email.eq.$email');
+      } else {
+        query = query.eq('volunteer_id', volunteerId);
+      }
+
+      final response = await query
+          .eq('status', 'pending')
+          .order('created_at', ascending: false);
+
+      final list = (response as List<dynamic>)
+          .map((item) => EventInvitation.fromSupabase(item as Map<String, dynamic>))
+          .toList();
+
+      return list;
+    } catch (e) {
+      print('VolunteerAssignmentRepository ERROR fetching invitations: $e');
+      return [];
+    }
+  }
+
+  @override
+  Future<void> acceptInvitation(EventInvitation invitation) async {
+    try {
+      final token = _supabase.auth.currentSession?.accessToken;
+      bool apiHandled = false;
+
+      // Try calling FastAPI backend endpoints to ensure assignment is created with service key
+      if (token != null) {
+        final candidateHosts = [
+          'http://127.0.0.1:8000',
+          'http://10.0.2.2:8000',
+          'http://192.168.1.5:8000',
+        ];
+
+        for (final host in candidateHosts) {
+          try {
+            final client = HttpClient();
+            client.connectionTimeout = const Duration(milliseconds: 1500);
+            final req = await client.postUrl(
+              Uri.parse('$host/api/volunteers/invitations/${invitation.id}/accept'),
+            );
+            req.headers.set('Authorization', 'Bearer $token');
+            req.headers.set('Content-Type', 'application/json');
+            final res = await req.close();
+            if (res.statusCode == 200) {
+              apiHandled = true;
+              client.close();
+              break;
+            }
+            client.close();
+          } catch (_) {
+            // Try next host
+          }
+        }
+      }
+
+      // If backend was not reached, update directly via Supabase client
+      if (!apiHandled) {
+        await _supabase
+            .from('event_invitations')
+            .update({'status': 'accepted'})
+            .eq('id', invitation.id);
+
+        try {
+          await _supabase.from('volunteer_assignments').insert({
+            'volunteer_id': invitation.volunteerId ?? _supabase.auth.currentUser?.id,
+            'event_id': invitation.eventId,
+            'status': 'active',
+            'role': 'crowd_monitor',
+          });
+        } catch (e) {
+          print('VolunteerAssignmentRepository note: direct assignment insert: $e');
+        }
+      }
+    } catch (e) {
+      print('VolunteerAssignmentRepository ERROR accepting invitation: $e');
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> declineInvitation(String invitationId) async {
+    try {
+      await _supabase
+          .from('event_invitations')
+          .update({'status': 'declined'})
+          .eq('id', invitationId);
+
+      final token = _supabase.auth.currentSession?.accessToken;
+      if (token != null) {
+        final candidateHosts = [
+          'http://127.0.0.1:8000',
+          'http://10.0.2.2:8000',
+          'http://192.168.1.5:8000',
+        ];
+        for (final host in candidateHosts) {
+          try {
+            final client = HttpClient();
+            client.connectionTimeout = const Duration(milliseconds: 1200);
+            final req = await client.postUrl(
+              Uri.parse('$host/api/volunteers/invitations/$invitationId/decline'),
+            );
+            req.headers.set('Authorization', 'Bearer $token');
+            final res = await req.close();
+            client.close();
+            if (res.statusCode == 200) break;
+          } catch (_) {}
+        }
+      }
+    } catch (e) {
+      print('VolunteerAssignmentRepository ERROR declining invitation: $e');
       rethrow;
     }
   }

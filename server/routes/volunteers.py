@@ -400,7 +400,7 @@ async def accept_invitation(
             {
                 "volunteer_id": current_user["user_id"],
                 "event_id": invitation["event_id"],
-                "status": "confirmed",
+                "status": "active",
             }
         ).execute()
 
