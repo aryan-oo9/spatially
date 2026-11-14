@@ -1,4 +1,4 @@
-# Spatially: Privacy-Preserving Edge Telemetry, Macroscopic Graph Flow Prediction, and Closed-Loop Gamified Crowd Control for Large-Scale Physical Events
+# Spatially: Privacy-Preserving BLE Telemetry and Macroscopic Graph Forecasting for Venue Crowd Management
 
 **Aryan Verma, Blaise Rodrigues, Daksh Thakar, Devansh Nayak, and Prof. Ankita Amburle**  
 *Computer Engineering Department*  
@@ -7,9 +7,9 @@
 
 ---
 
-***Abstract*—Managing crowd safety across large-scale indoor and multi-level venues remains a critical public safety challenge. Conventional monitoring systems rely either on privacy-invasive camera/MAC surveillance or on deep learning models that suffer from cold-start failures in temporary venues lacking historical training data. Furthermore, existing event dashboards operate reactively and lack closed-loop mechanisms to redistribute foot traffic. This paper presents *Spatially*, an end-to-end, privacy-preserving event intelligence and crowd coordination platform uniting Attendee Mobile, Volunteer Mobile, and Organizer Web Command surfaces. Spatially introduces three technical contributions: (1) a zero-PII Bluetooth Low Energy (BLE) telemetry pipeline using rotating 6-byte SHA-256 ephemeral identifiers, sticky service-UUID filtering, and an offline-resilient SQLite outbox; (2) a training-free, three-layer macroscopic overcrowding predictor combining irregular-interval Holt exponential smoothing, floorplan-derived topology graphs, mass-conserving hydraulic spillover, and timetable-driven session surges; and (3) a closed-loop mitigation architecture pairing volunteer waveform haptics with generative AI *Flash Surge Diversion Quests* to incentivize voluntary attendee dispersal. Evaluation across 205 mobile tests, Android hardware trials, and multi-scale benchmarks demonstrates 25-zone, 15-minute inference in 0.751 ms (4.724 ms for 100 zones), exact mass conservation ($< 10^{-6}$ residual), and 12.3-minute early-warning lead times.**
+***Abstract*—Managing crowd safety across large-scale indoor and multi-level venues remains a critical public safety challenge. Conventional monitoring systems rely either on privacy-invasive camera or Media Access Control (MAC) surveillance, or on deep learning models that suffer from cold-start failures in temporary venues lacking historical training data. Furthermore, existing event dashboards operate reactively and lack closed-loop mechanisms to redistribute foot traffic. This paper presents *Spatially*, an end-to-end, privacy-preserving event intelligence and crowd coordination platform uniting Attendee Mobile, Volunteer Mobile, and Organizer Web Command surfaces. Spatially introduces three technical contributions: (1) a Bluetooth Low Energy (BLE) telemetry pipeline free of personally identifiable information (PII), using rotating 6-byte SHA-256 ephemeral identifiers, sticky service-UUID filtering, and an offline-resilient SQLite outbox; (2) a training-free, three-layer macroscopic overcrowding predictor combining irregular-interval Holt exponential smoothing, floorplan-derived topology graphs, mass-conserving hydraulic spillover, and timetable-driven session surges; and (3) a closed-loop mitigation architecture pairing volunteer waveform haptics with generative AI *Flash Surge Diversion Quests* to incentivize voluntary attendee dispersal. Evaluation across 205 mobile tests, Android hardware trials, and multi-scale benchmarks demonstrates 25-zone, 15 min horizon inference in 0.751 ms (4.724 ms for 100 zones), exact mass conservation ($< 10^{-6}$ residual), and 12.3 min early-warning lead times.**
 
-***Keywords*—Crowd dynamics, Bluetooth Low Energy (BLE), privacy-preserving telemetry, macroscopic pedestrian flow, Holt exponential smoothing, spatial topology graphs, event operations, gamified crowd redirection.**
+***Keywords*—Bluetooth Low Energy, Crowd Monitoring, Data Privacy, Exponential Smoothing, Graph Theory, Indoor Environments, Pedestrian Traffic, Public Safety.**
 
 ---
 
@@ -438,17 +438,17 @@ xychart-beta
 
 **TABLE II: PREDICTION PERFORMANCE ACROSS CROWD REGIMES ($H = 15\text{ MIN}$)**
 
-| Zone | Regime | $r_{\mathrm{cur}}$ | $T_i$ (/min) | $r_{\mathrm{proj}}$ | Risk (Lead Time) |
+| Zone | Regime | $r_{\mathrm{cur}}$ | $T_i$ (/min) | $r_{\mathrm{proj}}$ | Risk (Lead, min) |
 | :--- | :--- | :---: | :---: | :---: | :--- |
-| **Zone 0** | `ramp` | 0.917 | `+3.35` | 0.900 | `critical` (**8.4 min**) |
-| **Zone 1** | `surge` | 0.899 | `+6.72` | 0.903 | `critical` (**5.2 min**) |
-| **Zone 2** | `dispersal` | 0.149 | `-9.30` | 0.785 | `watch` (Spillover) |
-| **Zone 3** | `plateau` | 0.400 | `-0.68` | 0.297 | `normal` (0 FP) |
+| **Zone 0** | `ramp` | 0.917 | `+3.35` | 0.900 | `critical` (**8.4**) |
+| **Zone 1** | `surge` | 0.899 | `+6.72` | 0.903 | `critical` (**5.2**) |
+| **Zone 2** | `dispersal` | 0.149 | `-9.30` | 0.785 | `watch` (Spill) |
+| **Zone 3** | `plateau` | 0.400 | `-0.68` | 0.297 | `normal` (`None`) |
 
-As shown in Table II, during the `ramp` and `surge` progressions, rolling-origin evaluation across the 20-minute trajectory confirms that the predictor crosses the `warning` classification threshold **8.4 minutes** ahead of actual physical breach in the ramp scenario and **5.2 minutes** ahead of breach following the mid-stream inflection point in the surge scenario. Equally important, when Zone 0 and Zone 1 exceed their $0.90$ critical limits at $t = 20\text{ min}$, their excess projected growth is not lost or unboundedly extrapolated; instead, Stage 3 routes the hydraulic overflow into adjacent Zone 2 (which has massive free headroom due to its recent dispersal, $r_{\mathrm{cur}} = 0.149$), elevating Zone 2 from `normal` to `watch` ($r_{\mathrm{proj}} = 0.785$) while Zone 3 remains `normal` with zero false alarms.
+As shown in Table II, during the `ramp` and `surge` progressions, rolling-origin evaluation across the 20 min trajectory confirms that the predictor crosses the `warning` classification threshold **8.4 min** ahead of actual physical breach in the ramp scenario and **5.2 min** ahead of breach following the mid-stream inflection point in the surge scenario. Equally important, when Zone 0 and Zone 1 exceed their $0.90$ critical limits at $t = 20\text{ min}$, their excess projected growth is not lost or unboundedly extrapolated; instead, Stage 3 routes the hydraulic overflow into adjacent Zone 2 (which has massive free headroom due to its recent dispersal, $r_{\mathrm{cur}} = 0.149$), elevating Zone 2 from `normal` to `watch` ($r_{\mathrm{proj}} = 0.785$) while Zone 3 remains `normal` with zero false alarms.
 
 ### C. Ablation Study: Multi-Zone Keynote Dispersal Scenario
-To isolate the contribution of each algorithmic layer in Spatially's predictor, we conducted an ablation study on a realistic three-zone convention layout: **Main Hall** ($C_1 = 200$, currently at $190$ attendees or $r_{\mathrm{cur}} = 0.950$, trend $+0.5/\text{min}$), **Central Foyer** ($C_2 = 100$, adjacent to Main Hall, currently at $45$ attendees or $r_{\mathrm{cur}} = 0.450$, trend $+1.0/\text{min}$), and **Expo Zone A** ($C_3 = 120$, adjacent to Central Foyer, currently at $32$ attendees or $r_{\mathrm{cur}} = 0.267$, trend $+0.2/\text{min}$). An *Opening Keynote* hosted in Main Hall is scheduled to conclude in $4\text{ minutes}$ ($t_{s,\mathrm{end}} = t_{\mathrm{now}} + 4\text{ min}$). We compared four configurations:
+To isolate the contribution of each algorithmic layer in Spatially's predictor, we conducted an ablation study on a realistic three-zone convention layout: **Main Hall** ($C_1 = 200$, currently at $190$ attendees or $r_{\mathrm{cur}} = 0.950$, trend $+0.5/\text{min}$), **Central Foyer** ($C_2 = 100$, adjacent to Main Hall, currently at $45$ attendees or $r_{\mathrm{cur}} = 0.450$, trend $+1.0/\text{min}$), and **Expo Zone A** ($C_3 = 120$, adjacent to Central Foyer, currently at $32$ attendees or $r_{\mathrm{cur}} = 0.267$, trend $+0.2/\text{min}$). An *Opening Keynote* hosted in Main Hall is scheduled to conclude in $4\text{ min}$ ($t_{s,\mathrm{end}} = t_{\mathrm{now}} + 4\text{ min}$). We compared four configurations:
 1. **Baseline (Reactive Snapshot Only):** Evaluates risk strictly from current occupancy $r_{\mathrm{cur}}$.
 2. **Layer 1 Only (Isolated Holt Smoothing):** Applies per-zone trend extrapolation (6)–(7) without spatial graph connections ($\mathcal{E} = \emptyset$).
 3. **Layer 1 + Layer 2 (Graph Hydraulic Spillover, No Timetable):** Enables the spatial adjacency graph $\mathcal{G}$ and 2-hop spillover (12), but omits session schedule covariance (11).
@@ -462,21 +462,21 @@ xychart-beta
     bar [0.45, 0.60, 0.77, 0.88]
     bar [0.27, 0.29, 0.31, 0.66]
 ```
-**Fig. 7.** Ablation comparison of 15-minute projected occupancy ratios ($r_{\mathrm{proj}}$) in Central Foyer and Expo Zone A across the four model configurations during a post-keynote dispersal.
+**Fig. 7.** Ablation comparison of 15 min projected occupancy ratios ($r_{\mathrm{proj}}$) in Central Foyer and Expo Zone A across the four model configurations during a post-keynote dispersal.
 
 **TABLE III: ABLATION STUDY ON 3-ZONE KEYNOTE DISPERSAL CASCADE**
 
-| Configuration | Main Hall | Central Foyer | Foyer ETA | Expo Zone A |
+| Configuration | Main Hall | Central Foyer | Foyer ETA (min) | Expo Zone A |
 | :--- | :---: | :---: | :---: | :---: |
-| **1. Reactive Baseline** | 0.95 (`crit`) | 0.45 (`norm`) | $\infty$ | 0.27 (`norm`) |
-| **2. L1 Isolated Holt** | 0.99 (`crit`) | 0.60 (`norm`) | $\infty$ | 0.29 (`norm`) |
-| **3. L1+L2 Graph Spill** | 0.90 (`crit`) | 0.77 (`watch`) | None | 0.31 (`norm`) |
-| **4. Full Spatially** | **0.63 (`crit`)** | **0.88 (`warn`)** | **12.3 min** | **0.66 (`watch`)** |
+| **1. Reactive Baseline** | 0.95 (`critical`) | 0.45 (`normal`) | `None` | 0.27 (`normal`) |
+| **2. L1 Isolated Holt** | 0.99 (`critical`) | 0.60 (`normal`) | `None` | 0.29 (`normal`) |
+| **3. L1+L2 Graph Spill** | 0.90 (`critical`) | 0.77 (`watch`) | `None` | 0.31 (`normal`) |
+| **4. Full Spatially** | **0.63 (`critical`)** | **0.88 (`warning`)** | **12.3** | **0.66 (`watch`)** |
 
-Table III reveals a striking operational insight. Both the **Reactive Baseline** and **Layer 1 Only (Isolated Holt)** completely fail to foresee the impending crush in the Central Foyer, rating it as `normal` ($0.450$ and $0.604$, respectively) because its local historical trend is only $+1.0\text{ person/min}$. Adding **Layer 2 (Graph Hydraulic Spillover)** detects that Main Hall is over its $0.90$ critical threshold and bleeds excess growth into the Central Foyer, raising the Foyer to `watch` ($0.770$). However, only the **Full Spatially Predictor** anticipates that when the Opening Keynote ends in $4\text{ minutes}$, $80\%$ of Main Hall's audience will surge into the contiguous Central Foyer. Furthermore, because that surge pushes the Central Foyer past its own $0.90$ critical threshold during Hop 0 of Stage 3, the engine automatically propagates a **second-hop cascade of $\sim 44$ attendees** onward from the Central Foyer into **Expo Zone A**! As a result, the Full Predictor raises the Central Foyer to `warning` ($r_{\mathrm{proj}} = 0.877$, $\mathrm{ETA} = 12.3\text{ min}$) with the explicit causal driver `"'Opening Keynote' ends in 4m (Main Hall)"`, raises Expo Zone A to `watch` ($r_{\mathrm{proj}} = 0.661$) with driver `"inflow ~44 from Central Foyer"`, and recommends redirecting traffic toward Expo Zone A—all while conserving total pedestrian mass to within floating-point precision ($< 10^{-6}$).
+Table III reveals a striking operational insight. Both the **Reactive Baseline** and **Layer 1 Only (Isolated Holt)** completely fail to foresee the impending crush in the Central Foyer, rating it as `normal` ($0.450$ and $0.604$, respectively) because its local historical trend is only $+1.0\text{ person/min}$. Adding **Layer 2 (Graph Hydraulic Spillover)** detects that Main Hall is over its $0.90$ critical threshold and bleeds excess growth into the Central Foyer, raising the Foyer to `watch` ($0.770$). However, only the **Full Spatially Predictor** anticipates that when the Opening Keynote ends in $4\text{ min}$, $80\%$ of Main Hall's audience will surge into the contiguous Central Foyer. Furthermore, because that surge pushes the Central Foyer past its own $0.90$ critical threshold during Hop 0 of Stage 3, the engine automatically propagates a **second-hop cascade of $\sim 44$ attendees** onward from the Central Foyer into **Expo Zone A**! As a result, the Full Predictor raises the Central Foyer to `warning` ($r_{\mathrm{proj}} = 0.877$, $\mathrm{ETA} = 12.3\text{ min}$) with the explicit causal driver `"'Opening Keynote' ends in 4m (Main Hall)"`, raises Expo Zone A to `watch` ($r_{\mathrm{proj}} = 0.661$) with driver `"inflow ~44 from Central Foyer"`, and recommends redirecting traffic toward Expo Zone A—all while conserving total pedestrian mass to within floating-point precision ($< 10^{-6}$).
 
 ### D. Computational Complexity and Latency Scaling
-Let $V = |\mathcal{Z}|$ denote the number of monitored zones, $E = |\mathcal{E}|$ the number of adjacency edges, $M$ the maximum snapshots per zone within the 30-minute window ($M \le 30$), $S = |\mathcal{S}|$ the number of active/upcoming sessions, and $K = 2$ the propagation hop limit.
+Let $V = |\mathcal{Z}|$ denote the number of monitored zones, $E = |\mathcal{E}|$ the number of adjacency edges, $M$ the maximum snapshots per zone within the 30 min window ($M \le 30$), $S = |\mathcal{S}|$ the number of active/upcoming sessions, and $K = 2$ the propagation hop limit.
 - **Stage 1 (Graph Construction):** Evaluates pairwise rectangle overlaps in $O(V^2)$ time.
 - **Stage 2 (Holt Smoothing):** Sorts and filters at most $M$ points per zone in $O(V \cdot M \log M)$ time.
 - **Stage 3 & 4 (Propagation & Scoring):** Executes session transfers in $O(S \cdot \deg(\mathcal{G}))$ and $K$ hops of sorted spillover in $O(K(V \log V + E))$.
@@ -494,13 +494,13 @@ xychart-beta
 
 **TABLE IV: EMPIRICAL INFERENCE LATENCY SCALING ACROSS ZONE COUNTS**
 
-| Zones ($N$) | Edges ($E$) | Mean Latency (ms) | Throughput |
+| Zones ($N$) | Edges ($E$) | Latency (ms) | Throughput (calls/s) |
 | :---: | :---: | :---: | :---: |
-| **5** | 8 | **0.113 ms** | 8,849 calls/s |
-| **10** | 18 | **0.236 ms** | 4,237 calls/s |
-| **25** | 68 | **0.751 ms** | 1,331 calls/s |
-| **50** | 150 | **1.916 ms** | 522 calls/s |
-| **100** | 324 | **4.724 ms** | 212 calls/s |
+| **5** | 8 | **0.113** | 8,849 |
+| **10** | 18 | **0.236** | 4,237 |
+| **25** | 68 | **0.751** | 1,331 |
+| **50** | 150 | **1.916** | 522 |
+| **100** | 324 | **4.724** | 212 |
 
 Even for a massive 100-zone multi-hall convention center processing 2,100 time-series points per request, the entire four-stage prediction pipeline completes in **4.724 ms** on a single CPU thread—more than $25\times$ faster than GPU-based deep learning baselines [9], [10], [11] and easily supporting high-frequency real-time dashboard polling.
 
