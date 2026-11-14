@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../services/attendee_identity.dart';
 import '../../../services/auth_service.dart';
 import '../../../services/offline_service.dart';
+import '../../../services/app_notification_service.dart';
 import '../../explore/data/event_cache_manager.dart';
 import '../models/notification_models.dart';
 
@@ -289,6 +290,9 @@ class NotificationRepositoryImpl implements NotificationRepository {
       _cachedNotifications = currentList;
       _controller.add(List.unmodifiable(_cachedNotifications!));
 
+      // Show in-app banner popup & phone notification bar for real-time broadcast
+      AppNotificationService.instance.showFromNotificationItem(newItem);
+
       // Asynchronously update partitioned cache
       final partition = _partitionId;
       final effectiveEventId = _subscribedEventId ?? 'global';
@@ -417,6 +421,9 @@ class NotificationRepositoryImpl implements NotificationRepository {
       list.insert(0, item);
       _cachedNotifications = list;
       _controller.add(List.unmodifiable(_cachedNotifications!));
+
+      // Trigger dual popup & phone notification bar
+      AppNotificationService.instance.showFromNotificationItem(item);
     }
   }
 

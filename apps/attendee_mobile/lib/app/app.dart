@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../design_system/design_system.dart';
 import '../screens/battery_check_screen.dart';
+import '../services/app_notification_service.dart';
 
 /// Global notifier controlling theme mode across the app.
 final ValueNotifier<ThemeMode> appThemeModeNotifier = ValueNotifier<ThemeMode>(ThemeMode.light);
@@ -17,6 +18,7 @@ class SpatiallyApp extends StatelessWidget {
       valueListenable: appThemeModeNotifier,
       builder: (context, themeMode, _) {
         return MaterialApp(
+          navigatorKey: AppNotificationService.navigatorKey,
           title: 'Spatially',
           debugShowCheckedModeBanner: false,
           theme: SpatiallyTheme.lightTheme,

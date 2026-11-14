@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../services/auth_service.dart';
+import '../../../services/app_notification_service.dart';
+import '../../notifications/models/notification_models.dart';
 import '../../profile/data/profile_repository.dart';
 import '../models/connect_models.dart';
 import 'connect_mock_data.dart';
@@ -67,6 +69,18 @@ class SupabaseConnectRepositoryImpl implements ConnectRepository {
             schema: 'public',
             table: 'attendee_connections',
             callback: (payload) {
+              final newRecord = payload.newRecord;
+              if (newRecord.isNotEmpty && payload.eventType == PostgresChangeEvent.insert) {
+                final requesterId = newRecord['requester_id']?.toString();
+                final currentUserId = _authService.currentUserId;
+                if (requesterId != null && requesterId != currentUserId) {
+                  AppNotificationService.instance.notify(
+                    title: 'New Connection Request',
+                    body: 'Someone at the event wants to connect with you!',
+                    category: NotificationCategory.connect,
+                  );
+                }
+              }
               _notify();
             },
           )
@@ -550,6 +564,19 @@ class SupabaseConnectRepositoryImpl implements ConnectRepository {
               value: connectionId,
             ),
             callback: (payload) {
+              final newRecord = payload.newRecord;
+              if (newRecord.isNotEmpty) {
+                final senderId = newRecord['sender_id']?.toString();
+                final currentUserId = _authService.currentUserId;
+                if (senderId != null && senderId != currentUserId) {
+                  final text = newRecord['message_text']?.toString() ?? 'New message';
+                  AppNotificationService.instance.notify(
+                    title: 'New Chat Message',
+                    body: text,
+                    category: NotificationCategory.connect,
+                  );
+                }
+              }
               _notify();
             },
           )

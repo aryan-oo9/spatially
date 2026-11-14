@@ -14,6 +14,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'config/supabase_config.dart';
 
 import 'app/app.dart';
+import 'services/app_notification_service.dart';
 
 // Native BleAdvertisingService channel — we talk to the Kotlin service directly
 // via a standard MethodChannel so Flutter doesn't need to own the BLE advertiser.
@@ -34,6 +35,8 @@ void main() async {
     url: supabaseUrl,
     publishableKey: supabaseAnonKey,
   );
+
+  await AppNotificationService.instance.initialize();
 
   runApp(const SpatiallyApp());
 }
