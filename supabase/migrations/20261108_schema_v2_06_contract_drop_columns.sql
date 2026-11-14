@@ -308,7 +308,7 @@ BEGIN
     p_event_id,
     v_user_id,
     v_reporter_name,
-    'reported',
+    'created',
     'open',
     p_description,
     timezone('utc'::text, now())
@@ -432,7 +432,7 @@ BEGIN
     p_event_id,
     v_user_id,
     COALESCE(v_reporter_name, 'Attendee'),
-    'reported',
+    'created',
     'open',
     p_description,
     timezone('utc'::text, now())
@@ -445,6 +445,52 @@ BEGIN
     'status', 'open'
   );
 END;
+$$;
+
+-- RPC: Get Attendee Assistance Status (Attendee Safe, joins with event_zones and profiles)
+CREATE OR REPLACE FUNCTION public.get_attendee_assistance_status(
+  p_event_id UUID,
+  p_device_id TEXT DEFAULT NULL
+)
+RETURNS TABLE (
+  id UUID,
+  category TEXT,
+  priority TEXT,
+  status TEXT,
+  title TEXT,
+  description TEXT,
+  venue_zone_name TEXT,
+  assigned_to_name TEXT,
+  created_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ,
+  resolution_notes TEXT
+)
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT
+    oi.id,
+    oi.category,
+    oi.priority,
+    oi.status,
+    oi.title,
+    oi.description,
+    COALESCE(ez.name, oi.specific_location, 'Venue') AS venue_zone_name,
+    p.full_name AS assigned_to_name,
+    oi.created_at,
+    oi.updated_at,
+    oi.resolution_notes
+  FROM public.operational_incidents oi
+  LEFT JOIN public.event_zones ez ON ez.id = oi.zone_id
+  LEFT JOIN public.profiles p ON p.id = oi.assigned_to_id
+  WHERE oi.event_id = p_event_id
+    AND oi.reporter_type = 'attendee'
+    AND (
+      (auth.uid() IS NOT NULL AND oi.reporter_id = auth.uid())
+      OR (p_device_id IS NOT NULL AND oi.reporter_device_id = p_device_id)
+    )
+  ORDER BY oi.created_at DESC;
 $$;
 
 CREATE OR REPLACE FUNCTION public.assign_operational_incident(

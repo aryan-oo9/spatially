@@ -65,7 +65,6 @@ void main() {
                 onResetRequested: () {},
                 onSignInWithGoogle: () {},
                 onSignOutRequested: () {},
-                onClaimTicketsRequested: () {},
               ),
             ),
           ),
@@ -95,7 +94,6 @@ void main() {
                 onResetRequested: () {},
                 onSignInWithGoogle: () {},
                 onSignOutRequested: () {},
-                onClaimTicketsRequested: () {},
               ),
             ),
           ),
@@ -104,7 +102,7 @@ void main() {
 
       expect(find.text('Google Account Connected'), findsOneWidget);
       expect(find.text('jane@example.com'), findsOneWidget);
-      expect(find.text('Claim Unlinked Guest Tickets'), findsOneWidget);
+      expect(find.text('Claim Unlinked Guest Tickets'), findsNothing);
       expect(find.text('Sign Out of Account'), findsOneWidget);
     });
   });

@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../design_system/design_system.dart';
@@ -90,16 +92,43 @@ class _AttendeeAssistanceDialogState extends State<AttendeeAssistanceDialog> {
           'p_event_id': widget.eventId,
           'p_device_id': deviceId,
         },
-      );
+      ).timeout(const Duration(seconds: 4));
       if (mounted) {
         setState(() {
           _myRequests = List<Map<String, dynamic>>.from(res as List);
           _isLoadingHistory = false;
         });
+        return;
       }
-    } catch (_) {
-      if (mounted) setState(() => _isLoadingHistory = false);
-    }
+    } catch (_) {}
+
+    // Fallback: query backend API if RPC had dropped column error
+    try {
+      final deviceId = AttendeeIdentity.deviceId;
+      final hosts = ['10.0.2.2:8000', 'localhost:8000'];
+      for (final h in hosts) {
+        try {
+          final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
+          final request = await client.getUrl(
+            Uri.parse('http://$h/api/events/assistance/status/${widget.eventId}?device_id=$deviceId'),
+          );
+          final response = await request.close();
+          if (response.statusCode == 200) {
+            final body = await response.transform(utf8.decoder).join();
+            final data = jsonDecode(body);
+            if (data is Map && data['requests'] is List && mounted) {
+              setState(() {
+                _myRequests = List<Map<String, dynamic>>.from(data['requests']);
+                _isLoadingHistory = false;
+              });
+              return;
+            }
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+
+    if (mounted) setState(() => _isLoadingHistory = false);
   }
 
   Future<void> _submit() async {
@@ -113,23 +142,72 @@ class _AttendeeAssistanceDialogState extends State<AttendeeAssistanceDialog> {
     try {
       final deviceId = AttendeeIdentity.deviceId;
       final selectedZone = _availableZones.where((z) => z['id'] == _selectedZoneId).firstOrNull;
-      final res = await Supabase.instance.client.rpc(
-        'request_attendee_assistance',
-        params: {
-          'p_event_id': widget.eventId,
-          'p_category': _selectedCategory,
-          'p_title': _titleController.text.trim(),
-          'p_description': _descController.text.trim(),
-          'p_zone_id': _selectedZoneId,
-          'p_venue_zone_name': selectedZone?['name'],
-          'p_specific_location': _locationController.text.trim().isNotEmpty
-              ? _locationController.text.trim()
-              : null,
-          'p_device_id': deviceId,
-        },
-      );
 
-      if (res is Map<String, dynamic> && res['success'] == true) {
+      bool succeeded = false;
+
+      // 1. Try Supabase RPC
+      try {
+        final res = await Supabase.instance.client.rpc(
+          'request_attendee_assistance',
+          params: {
+            'p_event_id': widget.eventId,
+            'p_category': _selectedCategory,
+            'p_title': _titleController.text.trim(),
+            'p_description': _descController.text.trim(),
+            'p_zone_id': _selectedZoneId,
+            'p_venue_zone_name': selectedZone?['name'],
+            'p_specific_location': _locationController.text.trim().isNotEmpty
+                ? _locationController.text.trim()
+                : null,
+            'p_device_id': deviceId,
+          },
+        ).timeout(const Duration(seconds: 4));
+
+        if (res is Map && res['success'] == true) {
+          succeeded = true;
+        }
+      } catch (rpcErr) {
+        debugPrint('request_attendee_assistance RPC failed: $rpcErr');
+      }
+
+      // 2. If RPC failed, fallback to backend API endpoint
+      if (!succeeded) {
+        try {
+          final payload = jsonEncode({
+            'event_id': widget.eventId,
+            'category': _selectedCategory,
+            'title': _titleController.text.trim(),
+            'description': _descController.text.trim(),
+            'zone_id': _selectedZoneId,
+            'venue_zone_name': selectedZone?['name'],
+            'specific_location': _locationController.text.trim().isNotEmpty
+                ? _locationController.text.trim()
+                : null,
+            'device_id': deviceId,
+          });
+
+          final hosts = ['10.0.2.2:8000', 'localhost:8000'];
+          for (final h in hosts) {
+            try {
+              final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
+              final request = await client.postUrl(
+                Uri.parse('http://$h/api/events/assistance/request'),
+              );
+              request.headers.contentType = ContentType.json;
+              request.write(payload);
+              final response = await request.close();
+              if (response.statusCode == 200 || response.statusCode == 201) {
+                succeeded = true;
+                break;
+              }
+            } catch (_) {}
+          }
+        } catch (apiErr) {
+          debugPrint('Backend assistance fallback error: $apiErr');
+        }
+      }
+
+      if (succeeded) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -144,12 +222,12 @@ class _AttendeeAssistanceDialogState extends State<AttendeeAssistanceDialog> {
           _loadHistory();
         }
       } else {
-        throw Exception('Submission failed');
+        throw Exception('Staff assistance could not be transmitted. Please notify an on-site volunteer or help desk directly.');
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = 'Failed to submit request: $e';
+          _errorMessage = e.toString().replaceAll('Exception:', '').trim();
           _isSubmitting = false;
         });
       }
@@ -322,7 +400,7 @@ class _AttendeeAssistanceDialogState extends State<AttendeeAssistanceDialog> {
               const Text('Zone / Hall', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
               const SizedBox(height: 6),
               DropdownButtonFormField<String>(
-                value: _selectedZoneId,
+                initialValue: _selectedZoneId,
                 decoration: InputDecoration(
                   hintText: 'Select zone or station',
                   prefixIcon: const Icon(Icons.location_on_outlined, size: 20),

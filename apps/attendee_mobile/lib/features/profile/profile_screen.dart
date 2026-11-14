@@ -178,55 +178,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  Future<void> _handleClaimTickets() async {
-    final result = await AuthService().claimGuestTickets();
-    if (!mounted) return;
-
-    if (!result.success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result.errorMessage ?? 'Failed to claim guest tickets.'),
-          backgroundColor: SpatiallyColors.error,
-        ),
-      );
-      return;
-    }
-
-    if (result.claimedCount > 0) {
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Tickets Claimed!'),
-          content: Text(
-            'Successfully claimed ${result.claimedCount} guest ticket(s) to your permanent cloud account!\n\n'
-            '${result.alreadyOwnedCount > 0 ? "You already own ${result.alreadyOwnedCount} ticket(s) on this account.\n\n" : ""}'
-            'You can now view your tickets across devices under My Tickets.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Awesome'),
-            ),
-          ],
-        ),
-      );
-    } else if (result.alreadyOwnedCount > 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('All ${result.alreadyOwnedCount} ticket(s) for this device are already owned by your account.'),
-          duration: const Duration(seconds: 3),
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No unclaimed guest tickets found for this device installation.'),
-          duration: Duration(seconds: 3),
-        ),
-      );
-    }
-  }
-
   Future<void> _handleResetProfile() async {
     await _repository.resetProfile();
     await _loadProfileData();
@@ -410,7 +361,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onResetRequested: _handleResetProfile,
               onSignInWithGoogle: _handleSignInWithGoogle,
               onSignOutRequested: _handleSignOut,
-              onClaimTicketsRequested: _handleClaimTickets,
             ),
 
             SpatiallySpacing.gapVerticalXxl,

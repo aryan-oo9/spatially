@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../../design_system/components/spatially_crowd_indicator.dart';
 
@@ -1193,13 +1194,29 @@ class SpatialMapSnapshot {
     // 2. Filter event zones for this level
     final zonesForLevel = eventZones.where((ez) {
       if (resolvedLevelId == null) return true;
-      return ez.levelId == resolvedLevelId;
+      if (ez.levelId.isNotEmpty && ez.levelId == resolvedLevelId) return true;
+      // If zone has no explicit levelId, show on the default level or when venue has only 1 level
+      if (ez.levelId.isEmpty) {
+        if (levels.length <= 1) return true;
+        if (targetLevel != null && (targetLevel.levelIndex == 0 || targetLevel.levelIndex == 1)) {
+          return true;
+        }
+      }
+      return false;
     }).toList();
 
     // 3. Filter POIs for this level
     final poisForLevel = pois.where((p) {
       if (resolvedLevelId == null) return true;
-      return p.levelId == resolvedLevelId;
+      if (p.levelId != null && p.levelId!.isNotEmpty && p.levelId == resolvedLevelId) return true;
+      if (p.zoneId != null && p.zoneId!.isNotEmpty) {
+        final inZone = zonesForLevel.any((z) => z.id == p.zoneId || z.venueZoneId == p.zoneId);
+        if (inZone) return true;
+      }
+      if ((p.levelId == null || p.levelId!.isEmpty) && (levels.length <= 1 || p.isPermanent)) {
+        return true;
+      }
+      return false;
     }).toList();
 
     // 4. Map into MapZone with live/cached crowd level & freshness
@@ -1220,14 +1237,123 @@ class SpatialMapSnapshot {
       );
     }).toList();
 
+    // 5. Layout fallback: if zones are stacked at (0,0) or have default/zero bounds,
+    // distribute them in a clear 2-column grid layout across the floor.
+    final finalZones = _distributeZonesIfStacked(mappedZones);
+
     return VenueMapData(
       venueName: venue.name,
       floorName: floorName,
-      zones: mappedZones,
+      zones: finalZones,
       pois: poisForLevel,
       levelId: resolvedLevelId,
       mapAssetUrl: targetLevel?.mapAssetUrl,
     );
+  }
+
+  static List<MapZone> _distributeZonesIfStacked(List<MapZone> zones) {
+    if (zones.isEmpty) return zones;
+
+    final bool allStackedOrDefault = zones.length > 1 &&
+        (zones.every((z) =>
+            (z.bounds.left <= 0.01 && z.bounds.top <= 0.01) ||
+            z.bounds.width <= 0.01 ||
+            z.bounds.height <= 0.01) ||
+         zones.every((z) =>
+            (z.bounds.left - zones.first.bounds.left).abs() < 0.001 &&
+            (z.bounds.top - zones.first.bounds.top).abs() < 0.001));
+
+    if (!allStackedOrDefault) {
+      if (zones.length == 1 && zones.first.bounds.left == 0.0 && zones.first.bounds.top == 0.0) {
+        final single = zones.first;
+        return [
+          MapZone(
+            id: single.id,
+            roomNumber: single.roomNumber,
+            name: single.name,
+            purpose: single.purpose,
+            bounds: const MapBounds(left: 0.15, top: 0.20, width: 0.70, height: 0.45),
+            entrancePoint: const MapPoint(0.50, 0.65),
+            crowdLevel: single.crowdLevel,
+            crowdFreshness: single.crowdFreshness,
+            capacity: single.capacity,
+            poiIds: single.poiIds,
+            levelId: single.levelId,
+            venueZoneId: single.venueZoneId,
+            operatingCapacity: single.operatingCapacity,
+            warningThreshold: single.warningThreshold,
+            criticalThreshold: single.criticalThreshold,
+            isCrowdMonitored: single.isCrowdMonitored,
+            operationalStatus: single.operationalStatus,
+            statusReason: single.statusReason,
+            isPublished: single.isPublished,
+            polygon: null,
+            metadata: single.metadata,
+          )
+        ];
+      }
+      return zones;
+    }
+
+    final int count = zones.length;
+    final int cols = count <= 1 ? 1 : 2;
+    final int rows = (count + cols - 1) ~/ cols;
+
+    const double availableWidth = 0.84;
+    const double spacingX = 0.04;
+    final double colWidth = (availableWidth - (cols - 1) * spacingX) / cols;
+
+    const double startY = 0.08;
+    const double spacingY = 0.04;
+    const double availableHeight = 0.80;
+    final double rowHeight = math.min(0.24, (availableHeight - (rows - 1) * spacingY) / rows);
+
+    final List<MapZone> distributed = [];
+    for (int i = 0; i < count; i++) {
+      final int c = i % cols;
+      final int r = i ~/ cols;
+      final double left = 0.08 + c * (colWidth + spacingX);
+      final double top = startY + r * (rowHeight + spacingY);
+
+      final updatedBounds = MapBounds(
+        left: left,
+        top: top,
+        width: colWidth,
+        height: rowHeight,
+      );
+      final updatedEntrance = MapPoint(
+        left + colWidth / 2,
+        top + rowHeight,
+      );
+
+      final original = zones[i];
+      distributed.add(
+        MapZone(
+          id: original.id,
+          roomNumber: original.roomNumber,
+          name: original.name,
+          purpose: original.purpose,
+          bounds: updatedBounds,
+          entrancePoint: updatedEntrance,
+          crowdLevel: original.crowdLevel,
+          crowdFreshness: original.crowdFreshness,
+          capacity: original.capacity,
+          poiIds: original.poiIds,
+          levelId: original.levelId,
+          venueZoneId: original.venueZoneId,
+          operatingCapacity: original.operatingCapacity,
+          warningThreshold: original.warningThreshold,
+          criticalThreshold: original.criticalThreshold,
+          isCrowdMonitored: original.isCrowdMonitored,
+          operationalStatus: original.operationalStatus,
+          statusReason: original.statusReason,
+          isPublished: original.isPublished,
+          polygon: null,
+          metadata: original.metadata,
+        ),
+      );
+    }
+    return distributed;
   }
 
   Map<String, dynamic> toJson() => {

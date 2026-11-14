@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../design_system/design_system.dart';
 import '../../services/offline_service.dart';
 import '../map/map_screen.dart';
+import '../map/data/supabase_attendee_location_repository_impl.dart';
 import 'models/connect_models.dart';
 import 'data/connect_repository.dart';
 import 'widgets/meeting_point_picker_sheet.dart';
@@ -99,6 +100,130 @@ class _TemporaryChatScreenState extends State<TemporaryChatScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(e.toString().replaceAll('Exception:', '').replaceAll('StateError:', '').trim()),
+            backgroundColor: SpatiallyColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleShareLocation() async {
+    if (!OfflineService().isOnline) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cannot share location while offline. Real-time chat requires connection.'),
+          backgroundColor: SpatiallyColors.warning,
+        ),
+      );
+      return;
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: BoxDecoration(
+          color: isDark ? SpatiallyColors.darkSurfaceElevated : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white24 : Colors.black12,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Text(
+                  'Share Location',
+                  style: SpatiallyTypography.sectionHeading(
+                    color: isDark ? Colors.white : SpatiallyColors.lightTextPrimary,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: SpatiallyColors.spatialCyan.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.my_location_rounded, color: SpatiallyColors.spatialCyan),
+                ),
+                title: const Text('Share My Current Location', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Send your actively detected zone or floor'),
+                onTap: () => Navigator.pop(ctx, 'current'),
+              ),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: SpatiallyColors.violet.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.pin_drop_rounded, color: SpatiallyColors.violet),
+                ),
+                title: const Text('Suggest Meeting Point / Zone', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Pick a venue room, booth, or point of interest'),
+                onTap: () => Navigator.pop(ctx, 'picker'),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (choice == 'current') {
+      await _shareCurrentLocation();
+    } else if (choice == 'picker') {
+      await _handleSuggestMeetingPoint();
+    }
+  }
+
+  Future<void> _shareCurrentLocation() async {
+    try {
+      final locRepo = SupabaseAttendeeLocationRepositoryImpl();
+      final loc = await locRepo.getLocation(widget.connection.eventId);
+
+      final String zoneTitle = loc.zoneName ?? (loc.zoneCode != null ? 'Zone ${loc.zoneCode}' : 'Main Venue Floor');
+      final String floorInfo = loc.levelName != null
+          ? ' (${loc.levelName})'
+          : (loc.floorLevel != null ? ' (Level ${loc.floorLevel})' : '');
+      final String messageText = '📍 I am currently at: $zoneTitle$floorInfo';
+
+      final meetingPoint = MeetingPoint(
+        id: loc.zoneId ?? 'current_loc',
+        title: zoneTitle,
+        subtitle: 'Attendee Current Location$floorInfo',
+        zoneId: loc.zoneId,
+        roomNumber: loc.zoneCode ?? '',
+      );
+
+      await widget.repository.sendMessage(
+        connectionId: widget.connection.id,
+        text: messageText,
+        meetingPoint: meetingPoint,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to share location: $e'),
             backgroundColor: SpatiallyColors.error,
           ),
         );
@@ -318,8 +443,8 @@ class _TemporaryChatScreenState extends State<TemporaryChatScreen> {
                       Icons.pin_drop_rounded,
                       color: OfflineService().isOnline ? SpatiallyColors.spatialCyan : textSecondary.withValues(alpha: 0.5),
                     ),
-                    tooltip: 'Suggest Meeting Point',
-                    onPressed: OfflineService().isOnline ? _handleSuggestMeetingPoint : null,
+                    tooltip: 'Share Location / Meeting Point',
+                    onPressed: OfflineService().isOnline ? _handleShareLocation : null,
                   ),
                   Expanded(
                     child: TextField(

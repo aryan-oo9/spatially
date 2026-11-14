@@ -573,12 +573,16 @@ class SupabaseConnectRepositoryImpl implements ConnectRepository {
     }
 
     try {
+      final candidateId = meetingPoint?.poiId ?? meetingPoint?.id;
+      final isUuid = candidateId != null &&
+          RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(candidateId);
+
       final response = await _supabase.rpc(
         'send_chat_message',
         params: {
           'p_connection_id': connectionId,
           'p_message_text': text,
-          'p_meeting_poi_id': meetingPoint?.poiId ?? meetingPoint?.id,
+          'p_meeting_poi_id': isUuid ? candidateId : null,
         },
       ).timeout(const Duration(seconds: 6));
 
@@ -619,31 +623,53 @@ class SupabaseConnectRepositoryImpl implements ConnectRepository {
   @override
   Future<List<MeetingPoint>> getAvailableMeetingPoints({String? eventId}) async {
     try {
-      var query = _supabase
-          .from('venue_pois')
-          .select('id, name, description, zone_id, category')
-          .eq('is_active', true);
+      final points = <MeetingPoint>[];
 
+      // 1. Fetch Event Zones for this event
       if (eventId != null && eventId.isNotEmpty) {
-        query = query.eq('event_id', eventId);
-      }
+        final zonesResponse = await _supabase
+            .from('event_zones')
+            .select('id, name, floor_level')
+            .eq('event_id', eventId)
+            .eq('is_published', true)
+            .order('name')
+            .timeout(const Duration(seconds: 4));
 
-      final response = await query.timeout(const Duration(seconds: 4));
-
-      if (response.isNotEmpty) {
-        final points = <MeetingPoint>[];
-        for (final row in response) {
-          final r = Map<String, dynamic>.from(row);
+        for (final row in (zonesResponse as List)) {
+          final r = Map<String, dynamic>.from(row as Map);
           points.add(
             MeetingPoint(
               id: r['id']?.toString() ?? '',
-              title: r['name']?.toString() ?? 'Venue Location',
-              subtitle: r['description']?.toString() ?? r['category']?.toString() ?? '',
-              zoneId: r['zone_id']?.toString(),
-              poiId: r['id']?.toString(),
+              title: r['name']?.toString() ?? 'Event Zone',
+              subtitle: 'Floor Level ${r['floor_level'] ?? 1}',
+              zoneId: r['id']?.toString(),
+              roomNumber: r['name']?.toString() ?? '',
             ),
           );
         }
+      }
+
+      // 2. Fetch Venue POIs (either event-specific or permanent venue POIs)
+      final poisResponse = await _supabase
+          .from('venue_pois')
+          .select('id, name, description, zone_id, category')
+          .eq('is_active', true)
+          .timeout(const Duration(seconds: 4));
+
+      for (final row in (poisResponse as List)) {
+        final r = Map<String, dynamic>.from(row as Map);
+        points.add(
+          MeetingPoint(
+            id: r['id']?.toString() ?? '',
+            title: r['name']?.toString() ?? 'Venue Location',
+            subtitle: r['description']?.toString() ?? r['category']?.toString() ?? '',
+            zoneId: r['zone_id']?.toString(),
+            poiId: r['id']?.toString(),
+          ),
+        );
+      }
+
+      if (points.isNotEmpty) {
         return points;
       }
     } catch (e) {

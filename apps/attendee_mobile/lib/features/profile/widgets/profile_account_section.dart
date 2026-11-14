@@ -10,7 +10,6 @@ class ProfileAccountSection extends StatelessWidget {
   final VoidCallback onResetRequested;
   final VoidCallback onSignInWithGoogle;
   final VoidCallback onSignOutRequested;
-  final VoidCallback onClaimTicketsRequested;
 
   const ProfileAccountSection({
     super.key,
@@ -18,7 +17,6 @@ class ProfileAccountSection extends StatelessWidget {
     required this.onResetRequested,
     required this.onSignInWithGoogle,
     required this.onSignOutRequested,
-    required this.onClaimTicketsRequested,
   });
 
   @override
@@ -94,42 +92,6 @@ class ProfileAccountSection extends StatelessWidget {
                     ),
                   ],
                 ),
-                const Divider(),
-                SpatiallySpacing.gapVerticalXs,
-
-                // Claim Guest Tickets Action
-                InkWell(
-                  onTap: onClaimTicketsRequested,
-                  borderRadius: BorderRadius.circular(SpatiallyRadius.sm),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: SpatiallySpacing.xs),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.confirmation_number_outlined, color: SpatiallyColors.violet, size: 22),
-                        SpatiallySpacing.gapHorizontalMd,
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Claim Unlinked Guest Tickets',
-                                style: SpatiallyTypography.body(color: textPrimary).copyWith(
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              Text(
-                                'Link tickets held on this physical device to your permanent cloud account.',
-                                style: SpatiallyTypography.caption(color: textSecondary),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const Icon(Icons.chevron_right_rounded, color: SpatiallyColors.violet, size: 20),
-                      ],
-                    ),
-                  ),
-                ),
-
                 const Divider(),
                 SpatiallySpacing.gapVerticalXs,
 

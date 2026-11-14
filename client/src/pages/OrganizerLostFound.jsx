@@ -637,7 +637,7 @@ export default function OrganizerLostFound() {
                   {/* Location & Time Info */}
                   <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem", marginBottom: "0.85rem", fontSize: "0.825rem", color: "var(--text-muted)" }}>
                     {(() => {
-                      const zoneName = item.zone_id ? zoneMap.get(item.zone_id) : item.venue_zone_name;
+                      const zoneName = item.event_zones?.name || (item.zone_id ? zoneMap.get(item.zone_id) : null) || item.venue_zone_name;
                       const loc = [zoneName, item.specific_location].filter(Boolean).join(" • ");
                       if (!loc) return null;
                       return (

@@ -1,4 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
+from pydantic import BaseModel
+from typing import Optional
 from models import EventCreate, EventUpdate
 from config import get_supabase
 from middleware.auth import get_current_user, require_organizer
@@ -597,4 +599,105 @@ async def list_venues():
         v_dict["default_capacity"] = meta.get("default_capacity", None)
         venues.append(v_dict)
     return {"venues": venues}
+
+
+# ═══════════════════════════════════════════════════════════════
+# ATTENDEE ASSISTANCE ENDPOINTS
+# ═══════════════════════════════════════════════════════════════
+
+class AttendeeAssistanceRequest(BaseModel):
+    event_id: str
+    category: str = "attendee_assistance"
+    title: str
+    description: str
+    zone_id: Optional[str] = None
+    venue_zone_name: Optional[str] = None
+    specific_location: Optional[str] = None
+    device_id: Optional[str] = None
+
+
+@router.post("/assistance/request")
+async def request_assistance(data: AttendeeAssistanceRequest):
+    supabase = get_supabase()
+
+    priority = "normal"
+    if data.category in ("medical", "security"):
+        priority = "urgent"
+    elif data.category == "accessibility":
+        priority = "important"
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    incident_payload = {
+        "event_id": data.event_id,
+        "reporter_type": "attendee",
+        "reporter_name": "Attendee",
+        "reporter_device_id": data.device_id,
+        "category": data.category,
+        "priority": priority,
+        "status": "open",
+        "title": data.title.strip(),
+        "description": data.description.strip(),
+        "zone_id": data.zone_id if data.zone_id else None,
+        "specific_location": data.specific_location.strip() if data.specific_location else data.venue_zone_name,
+        "created_at": now_iso,
+        "updated_at": now_iso,
+    }
+
+    res = supabase.table("operational_incidents").insert(incident_payload).execute()
+    if not res.data:
+        raise HTTPException(status_code=500, detail="Failed to log assistance request")
+
+    incident_id = res.data[0]["id"]
+
+    try:
+        supabase.table("operational_incident_logs").insert({
+            "incident_id": incident_id,
+            "event_id": data.event_id,
+            "actor_name": "Attendee",
+            "action": "created",
+            "new_status": "open",
+            "notes": data.description.strip(),
+            "created_at": now_iso,
+        }).execute()
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "incident_id": incident_id,
+        "priority": priority,
+        "status": "open"
+    }
+
+
+@router.get("/assistance/status/{event_id}")
+async def get_assistance_status(event_id: str, device_id: Optional[str] = None):
+    supabase = get_supabase()
+    query = (
+        supabase.table("operational_incidents")
+        .select("id, category, priority, status, title, description, zone_id, specific_location, created_at, updated_at, resolution_notes, event_zones(name)")
+        .eq("event_id", event_id)
+        .eq("reporter_type", "attendee")
+        .order("created_at", desc=True)
+    )
+    if device_id:
+        query = query.eq("reporter_device_id", device_id)
+
+    res = query.execute()
+    items = []
+    for row in (res.data or []):
+        zone_name = (row.get("event_zones") or {}).get("name") or row.get("specific_location") or "Venue"
+        items.append({
+            "id": row["id"],
+            "category": row.get("category"),
+            "priority": row.get("priority"),
+            "status": row.get("status"),
+            "title": row.get("title"),
+            "description": row.get("description"),
+            "venue_zone_name": zone_name,
+            "created_at": row.get("created_at"),
+            "updated_at": row.get("updated_at"),
+            "resolution_notes": row.get("resolution_notes"),
+        })
+    return {"requests": items}
 

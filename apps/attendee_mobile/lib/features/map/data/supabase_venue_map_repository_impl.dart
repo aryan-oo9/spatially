@@ -122,12 +122,27 @@ class SupabaseVenueMapRepositoryImpl implements VenueMapRepository {
     final eventZones = <EventZone>[];
     for (final raw in (eventZonesResponse as List)) {
       final row = Map<String, dynamic>.from(raw as Map);
-      // Fallback geometry from venue_zones if event_zones bounds is missing
-      if (row['bounds'] == null && row['venue_zones'] is Map) {
+      // Fallback geometry and level from venue_zones if event_zones is missing them
+      if (row['venue_zones'] is Map) {
         final vz = row['venue_zones'] as Map;
-        row['bounds'] = vz['bounds'];
+        row['bounds'] ??= vz['bounds'];
         row['entrance_point'] ??= vz['entrance_point'];
         row['polygon'] ??= vz['polygon'];
+        if (row['level_id'] == null || row['level_id'].toString().isEmpty) {
+          row['level_id'] = vz['level_id'];
+        }
+      }
+
+      // If level_id is still missing, resolve by floor_level or default to first level
+      if ((row['level_id'] == null || row['level_id'].toString().isEmpty) && levels.isNotEmpty) {
+        final floorLevel = row['floor_level'];
+        final matchingLvl = levels.cast<SpatialLevel?>().firstWhere(
+          (lvl) => lvl?.levelIndex == floorLevel || (floorLevel == 1 && (lvl?.levelIndex == 0 || lvl?.levelIndex == 1)),
+          orElse: () => levels.first,
+        );
+        if (matchingLvl != null) {
+          row['level_id'] = matchingLvl.id;
+        }
       }
       eventZones.add(EventZone.fromJson(row));
     }

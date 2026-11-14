@@ -1757,7 +1757,7 @@ class LostFoundUpdate(BaseModel):
 async def list_lost_found(event_id: str, current_user: dict = Depends(require_organizer)):
     supabase = get_supabase()
     verify_event_ownership(supabase, event_id, current_user["user_id"])
-    result = supabase.table("lost_found_reports").select("*").eq("event_id", event_id).order("created_at", desc=True).execute()
+    result = supabase.table("lost_found_reports").select("*, event_zones(name)").eq("event_id", event_id).order("created_at", desc=True).execute()
     return {"items": result.data or []}
 
 @router.post("/lost-found")

@@ -60,7 +60,7 @@ class LostFoundRepositoryImpl implements LostFoundRepository {
     try {
       final response = await _supabase
           .from('lost_found_reports')
-          .select()
+          .select('*, event_zones(name)')
           .eq('event_id', eventId)
           .order('created_at', ascending: false)
           .timeout(const Duration(seconds: 4));
@@ -89,6 +89,11 @@ class LostFoundRepositoryImpl implements LostFoundRepository {
         final isMine = (myDeviceId != null && r['reporter_device_id'] == myDeviceId) ||
             (myUserId != null && r['reporter_user_id'] == myUserId);
 
+        final eventZoneMap = r['event_zones'] is Map ? (r['event_zones'] as Map) : null;
+        final zoneName = eventZoneMap?['name']?.toString() ??
+            r['specific_location']?.toString() ??
+            'Venue Zone';
+
         return LostFoundReport(
           id: r['id']?.toString() ?? '',
           eventId: r['event_id']?.toString() ?? eventId,
@@ -97,7 +102,7 @@ class LostFoundRepositoryImpl implements LostFoundRepository {
           title: r['title']?.toString() ?? 'Report',
           description: r['description']?.toString() ?? '',
           venueZoneId: r['zone_id']?.toString() ?? '712',
-          venueZoneName: r['venue_zone_name']?.toString() ?? 'Room 712 • Foyer & Registration',
+          venueZoneName: zoneName,
           specificLocation: r['specific_location']?.toString(),
           imagePlaceholderName: r['image_url']?.toString(),
           status: status,
@@ -179,8 +184,7 @@ class LostFoundRepositoryImpl implements LostFoundRepository {
           'title': title,
           'description': description,
           'zone_id': isUuid ? venueZoneId : null,
-          'venue_zone_name': venueZoneName,
-          'specific_location': specificLocation,
+          'specific_location': specificLocation ?? venueZoneName,
           'image_url': imagePlaceholderName,
           'status': 'submitted',
           'pickup_instructions': instructions,
@@ -215,12 +219,14 @@ class LostFoundRepositoryImpl implements LostFoundRepository {
         _eventReports[eventId] = list;
         _controller.add(List.unmodifiable(list));
         return newReport;
-      } catch (_) {
+      } catch (e) {
+        debugPrint('LostFoundRepository: Supabase insert failed: $e');
         // Fallback to offline queue if Supabase insert timed out or failed
       }
     }
 
     // Offline or network error: Save locally as pendingSync
+    final isUuid = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(venueZoneId);
     final offlineReport = LostFoundReport(
       id: 'lf_pending_${DateTime.now().millisecondsSinceEpoch}',
       eventId: eventId,
@@ -248,8 +254,8 @@ class LostFoundRepositoryImpl implements LostFoundRepository {
         'category': category.name,
         'title': title,
         'description': description,
-        'venue_zone_name': venueZoneName,
-        'specific_location': specificLocation,
+        'zone_id': isUuid ? venueZoneId : null,
+        'specific_location': specificLocation ?? venueZoneName,
         'image_url': imagePlaceholderName,
         'status': 'submitted',
         'pickup_instructions': instructions,
