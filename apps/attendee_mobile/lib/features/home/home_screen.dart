@@ -22,7 +22,11 @@ import '../notifications/models/notification_models.dart';
 import '../notifications/notification_center_screen.dart';
 import '../map/data/venue_map_repository.dart';
 import '../map/data/supabase_venue_map_repository_impl.dart';
+import '../map/data/attendee_location_repository.dart';
+import '../map/data/supabase_attendee_location_repository_impl.dart';
+import '../map/models/attendee_location_models.dart';
 import '../map/models/venue_map_models.dart';
+import 'widgets/home_current_zone_card.dart';
 import '../event_content/data/event_content_repository.dart';
 import '../event_content/models/spatially_session.dart';
 import '../event_content/sessions/session_detail_screen.dart';
@@ -48,11 +52,13 @@ import '../wallet/screens/wallet_screen.dart';
 class HomeScreen extends StatefulWidget {
   final VoidCallback? onNavigateToExplore;
   final VoidCallback? onNavigateToMap;
+  final AttendeeLocationRepository? locationRepository;
 
   const HomeScreen({
     super.key,
     this.onNavigateToExplore,
     this.onNavigateToMap,
+    this.locationRepository,
   });
 
   @override
@@ -63,8 +69,11 @@ class _HomeScreenState extends State<HomeScreen> {
   final NotificationRepository _notificationRepo = NotificationRepositoryImpl();
   final VenueMapRepository _venueMapRepo = SupabaseVenueMapRepositoryImpl();
   final EventContentRepository _contentRepo = EventContentRepositoryImpl();
+  late AttendeeLocationRepository _locationRepo;
 
   StreamSubscription? _authSub;
+  StreamSubscription<AttendeeLocationState>? _locationSub;
+  AttendeeLocationState _locationState = AttendeeLocationState.unknown();
   Timer? _liveTicker;
   AppLifecycleListener? _lifecycleListener;
 
@@ -92,6 +101,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _locationRepo = widget.locationRepository ?? SupabaseAttendeeLocationRepositoryImpl();
     _loadData();
     WalletService.instance.init();
     WalletService.instance.addListener(_onWalletChanged);
@@ -124,6 +134,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _locationSub?.cancel();
+    if (widget.locationRepository == null) {
+      _locationRepo.dispose();
+    }
     _liveTicker?.cancel();
     _lifecycleListener?.dispose();
     _authSub?.cancel();
@@ -144,6 +158,17 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       }
     }).catchError((_) {});
+  }
+
+  void _subscribeLocationTelemetry(String eventId) {
+    _locationSub?.cancel();
+    _locationSub = _locationRepo.watchLocation(eventId).listen((locState) {
+      if (mounted) {
+        setState(() {
+          _locationState = locState;
+        });
+      }
+    });
   }
 
   SpatiallySession? _findActiveOrNextSession(List<SpatiallySession> sessions) {
@@ -266,6 +291,7 @@ class _HomeScreenState extends State<HomeScreen> {
         final eventId = bestEvent['id']?.toString();
         if (eventId != null) {
           _notificationRepo.subscribeToRealtime(eventId);
+          _subscribeLocationTelemetry(eventId);
 
           try {
             snapshot = await _venueMapRepo.getMapSnapshot(eventId);
@@ -344,6 +370,7 @@ class _HomeScreenState extends State<HomeScreen> {
         SpatialMapSnapshot? snapshot;
         SpatiallySession? activeSession;
         if (eventId != null) {
+          _subscribeLocationTelemetry(eventId);
           try {
             snapshot = await _venueMapRepo.getMapSnapshot(eventId);
           } catch (_) {}
@@ -551,6 +578,21 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
 
+          // --- Real-Time Current Location & Spatial Presence Card ---
+          if (_primaryEvent != null) ...[
+            const SizedBox(height: 32),
+            _SectionLabel(
+              label: 'CURRENT LOCATION',
+              isDark: isDark,
+            ),
+            const SizedBox(height: 12),
+            HomeCurrentZoneCard(
+              locationState: _locationState,
+              onViewOnMap: widget.onNavigateToMap,
+              onChangeZone: () => _showZonePickerSheet(context),
+            ),
+          ],
+
           const SizedBox(height: 32),
 
           // --- Divider section heading: Venue Map ---
@@ -563,7 +605,7 @@ class _HomeScreenState extends State<HomeScreen> {
           // --- Glanceable Mini-Map ---
           HomeMiniMap(
             onTap: widget.onNavigateToMap,
-            activeZone: null,
+            activeZone: _locationState.hasLocation ? _locationState.zoneName : null,
             snapshot: _spatialSnapshot,
           ),
 
@@ -790,6 +832,121 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
         ],
       ),
+    );
+  }
+
+  void _showZonePickerSheet(BuildContext context) {
+    if (_primaryEvent == null) return;
+    final eventId = _primaryEvent!['id']?.toString() ?? '';
+    final zones = _spatialSnapshot?.eventZones ?? [];
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surface = isDark ? SpatiallyColors.darkSurface : SpatiallyColors.lightSurface;
+    final textPrimary = isDark ? SpatiallyColors.darkTextPrimary : SpatiallyColors.lightTextPrimary;
+    final textSecondary = isDark ? SpatiallyColors.darkTextSecondary : SpatiallyColors.lightTextSecondary;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: textSecondary.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Select Your Zone',
+                      style: SpatiallyTypography.sectionHeading(color: textPrimary),
+                    ),
+                    if (_locationState.isManual)
+                      TextButton.icon(
+                        onPressed: () {
+                          _locationRepo.clearManualZone(eventId);
+                          Navigator.pop(ctx);
+                        },
+                        icon: const Icon(Icons.refresh_rounded, size: 16),
+                        label: const Text('Auto-Detect'),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Choose the event zone you are currently standing in:',
+                  style: SpatiallyTypography.secondary(color: textSecondary),
+                ),
+                const SizedBox(height: 12),
+                if (zones.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 24),
+                    child: Center(
+                      child: Text(
+                        'No event zones published yet.',
+                        style: SpatiallyTypography.secondary(color: textSecondary),
+                      ),
+                    ),
+                  )
+                else
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: zones.length,
+                      separatorBuilder: (context, index) => const Divider(height: 1),
+                      itemBuilder: (ctx, index) {
+                        final zone = zones[index];
+                        final isSelected = _locationState.zoneId == zone.id;
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(
+                            isSelected ? Icons.check_circle_rounded : Icons.meeting_room_outlined,
+                            color: isSelected ? SpatiallyColors.spatialCyan : textSecondary,
+                          ),
+                          title: Text(
+                            zone.name,
+                            style: SpatiallyTypography.body(color: textPrimary).copyWith(
+                              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                            ),
+                          ),
+                          subtitle: Text(
+                            'Zone ${zone.code} · Cap ~${zone.operatingCapacity}',
+                            style: SpatiallyTypography.caption(color: textSecondary),
+                          ),
+                          onTap: () {
+                            _locationRepo.setManualZone(
+                              eventId,
+                              zone.id,
+                              zoneName: zone.name,
+                              zoneCode: zone.code,
+                              levelId: zone.levelId,
+                            );
+                            Navigator.pop(ctx);
+                          },
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

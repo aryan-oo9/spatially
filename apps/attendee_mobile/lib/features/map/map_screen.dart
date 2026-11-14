@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -12,6 +13,9 @@ import '../explore/models/spatially_event.dart';
 import '../profile/data/profile_repository.dart';
 import 'data/supabase_venue_map_repository_impl.dart';
 import 'data/venue_map_repository.dart';
+import 'data/attendee_location_repository.dart';
+import 'data/supabase_attendee_location_repository_impl.dart';
+import 'models/attendee_location_models.dart';
 import 'models/venue_map_models.dart';
 import 'models/venue_mock_data.dart';
 import 'widgets/map_canvas.dart';
@@ -33,6 +37,7 @@ class MapScreen extends StatefulWidget {
   final String? initialZoneId;
   final String? initialPoiId;
   final VenueMapRepository? repository;
+  final AttendeeLocationRepository? locationRepository;
   final bool? isRootTab;
 
   const MapScreen({
@@ -41,6 +46,7 @@ class MapScreen extends StatefulWidget {
     this.initialZoneId,
     this.initialPoiId,
     this.repository,
+    this.locationRepository,
     this.isRootTab,
   });
 
@@ -52,6 +58,10 @@ class _MapScreenState extends State<MapScreen> {
   final TransformationController _transformationController = TransformationController();
 
   late VenueMapRepository _repository;
+  late AttendeeLocationRepository _locationRepo;
+  StreamSubscription<AttendeeLocationState>? _locationSub;
+  AttendeeLocationState _locationState = AttendeeLocationState.unknown();
+
   SpatiallyEvent? _currentEvent;
   SpatialMapSnapshot? _snapshot;
   SpatialLevel? _selectedLevel;
@@ -73,12 +83,17 @@ class _MapScreenState extends State<MapScreen> {
   void initState() {
     super.initState();
     _repository = widget.repository ?? SupabaseVenueMapRepositoryImpl();
+    _locationRepo = widget.locationRepository ?? SupabaseAttendeeLocationRepositoryImpl();
     _loadAccessibilityPreference();
     _resolveAndLoadMap();
   }
 
   @override
   void dispose() {
+    _locationSub?.cancel();
+    if (widget.locationRepository == null) {
+      _locationRepo.dispose();
+    }
     _unsubscribeRealtimeCrowd();
     _transformationController.dispose();
     super.dispose();
@@ -280,6 +295,16 @@ class _MapScreenState extends State<MapScreen> {
 
       // Subscribe to live crowd telemetry for this event
       _subscribeToRealtimeCrowd(eventId);
+
+      // Subscribe to indoor attendee location telemetry loopback
+      _locationSub?.cancel();
+      _locationSub = _locationRepo.watchLocation(eventId).listen((locState) {
+        if (mounted) {
+          setState(() {
+            _locationState = locState;
+          });
+        }
+      });
 
       // Resolve initial selection (POI or Zone)
       _checkInitialSelection();
@@ -576,6 +601,65 @@ class _MapScreenState extends State<MapScreen> {
     });
   }
 
+  void _locateMe() {
+    if (!_locationState.hasLocation) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Scanning for nearby spatial beacons…'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    // 1. Switch to level if zone is on a different level
+    if (_locationState.levelId != null &&
+        _snapshot != null &&
+        _selectedLevel?.id != _locationState.levelId) {
+      final matchingLevel = _snapshot!.levels.cast<SpatialLevel?>().firstWhere(
+            (lvl) => lvl?.id == _locationState.levelId,
+            orElse: () => null,
+          );
+      if (matchingLevel != null) {
+        _handleLevelSelected(matchingLevel);
+      }
+    }
+
+    // 2. Find zone in current venue data
+    final currentZone = _venueData?.findZoneById(_locationState.zoneId!) ??
+        _venueData?.findZoneById(_locationState.zoneCode ?? '');
+
+    if (currentZone != null) {
+      setState(() {
+        _selectedZone = currentZone;
+        _selectedPoi = null;
+        _activeRoute = null;
+      });
+      _centerMapOn(currentZone.bounds.center);
+    }
+  }
+
+  Future<void> _handleSetCurrentZone(MapZone zone) async {
+    if (_currentEvent == null) return;
+    await _locationRepo.setManualZone(
+      _currentEvent!.id,
+      zone.id,
+      zoneName: zone.name,
+      zoneCode: zone.roomNumber,
+      levelId: _selectedLevel?.id,
+      levelName: _selectedLevel?.name,
+      floorLevel: _selectedLevel?.levelIndex,
+    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Pinned location to ${zone.name}'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   void _startNavigationToSelected() {
     if (_venueData == null) return;
     final targetPoint = _selectedPoi?.point ??
@@ -583,12 +667,27 @@ class _MapScreenState extends State<MapScreen> {
         _selectedZone?.bounds.center;
     if (targetPoint == null) return;
 
-    final origin = _venueData!.zones.isNotEmpty
-        ? _venueData!.zones.first.entrancePoint
-        : const MapPoint(0.50, 0.90);
-    final originLabel = _venueData!.zones.isNotEmpty
-        ? _venueData!.zones.first.roomNumber
-        : 'Main Entrance';
+    MapPoint origin;
+    String originLabel;
+
+    final currentPresenceZone = _locationState.hasLocation
+        ? (_venueData!.findZoneById(_locationState.zoneId!) ??
+            _venueData!.findZoneById(_locationState.zoneCode ?? ''))
+        : null;
+
+    if (currentPresenceZone != null) {
+      origin = currentPresenceZone.bounds.center;
+      originLabel = currentPresenceZone.name.isNotEmpty
+          ? currentPresenceZone.name
+          : currentPresenceZone.roomNumber;
+    } else if (_venueData!.zones.isNotEmpty) {
+      origin = _venueData!.zones.first.entrancePoint;
+      originLabel = _venueData!.zones.first.roomNumber;
+    } else {
+      origin = const MapPoint(0.50, 0.90);
+      originLabel = 'Main Entrance';
+    }
+
     final destinationName = _selectedPoi?.name ?? _selectedZone?.roomNumber ?? 'Destination';
 
     final route = VenueMockData.calculateRoute(
@@ -806,6 +905,7 @@ class _MapScreenState extends State<MapScreen> {
               selectedZone: _selectedZone,
               selectedPoi: _selectedPoi,
               activeRoute: _activeRoute,
+              presenceZoneId: _locationState.zoneId,
               transformationController: _transformationController,
               onZoneTap: _handleZoneTap,
               onPoiTap: _handlePoiTap,
@@ -875,6 +975,44 @@ class _MapScreenState extends State<MapScreen> {
             ),
           ),
 
+          // 4b. Floating "Locate Me" Button (Bottom Right)
+          Positioned(
+            right: SpatiallySpacing.md,
+            bottom: (_selectedZone != null || _selectedPoi != null || _activeRoute != null)
+                ? 270
+                : (MediaQuery.of(context).padding.bottom + 76),
+            child: Material(
+              color: isDark ? SpatiallyColors.darkSurfaceElevated : Colors.white,
+              shape: const CircleBorder(),
+              elevation: 4,
+              shadowColor: Colors.black38,
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: _locateMe,
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: _locationState.hasLocation
+                          ? SpatiallyColors.spatialCyan.withValues(alpha: 0.5)
+                          : (isDark ? SpatiallyColors.darkBorderSubdued : SpatiallyColors.lightBorderSubdued),
+                    ),
+                  ),
+                  child: Icon(
+                    _locationState.hasLocation ? Icons.my_location_rounded : Icons.location_searching_rounded,
+                    size: 20,
+                    color: _locationState.hasLocation
+                        ? SpatiallyColors.spatialCyan
+                        : (isDark ? SpatiallyColors.darkTextSecondary : SpatiallyColors.lightTextSecondary),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
           // 5. Floating Contextual Bottom Sheet (Zone / POI Details or Route Navigation)
           if (_activeRoute != null)
             Positioned(
@@ -903,6 +1041,8 @@ class _MapScreenState extends State<MapScreen> {
                 allPois: venueData.pois,
                 isLiveCrowdData: floorCrowdFreshness == SpatialCrowdFreshness.live,
                 isOffline: !OfflineService().isOnline,
+                isCurrentZone: _selectedZone != null && _selectedZone!.id == _locationState.zoneId,
+                onSetCurrentZone: _selectedZone != null ? () => _handleSetCurrentZone(_selectedZone!) : null,
                 onNavigate: _startNavigationToSelected,
                 onClose: () {
                   setState(() {

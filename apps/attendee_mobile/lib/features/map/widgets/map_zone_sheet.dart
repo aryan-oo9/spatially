@@ -15,6 +15,8 @@ class MapZoneSheet extends StatelessWidget {
   final List<MapPoi> allPois;
   final bool isLiveCrowdData;
   final bool isOffline;
+  final bool isCurrentZone;
+  final VoidCallback? onSetCurrentZone;
   final VoidCallback onNavigate;
   final VoidCallback onClose;
 
@@ -25,6 +27,8 @@ class MapZoneSheet extends StatelessWidget {
     required this.allPois,
     this.isLiveCrowdData = false,
     this.isOffline = false,
+    this.isCurrentZone = false,
+    this.onSetCurrentZone,
     required this.onNavigate,
     required this.onClose,
   }) : assert(zone != null || poi != null, 'Either zone or poi must be provided');
@@ -230,11 +234,35 @@ class MapZoneSheet extends StatelessWidget {
             SpatiallySpacing.gapVerticalMd,
           ],
 
-          // Navigate Action CTA using SpatiallyPrimaryButton
-          SpatiallyPrimaryButton(
-            label: 'Navigate to ${poi != null ? poi!.name : zone!.roomNumber}',
-            icon: const Icon(Icons.navigation_rounded, color: Colors.white, size: 18),
-            onPressed: onNavigate,
+          // Action CTAs: Navigate + Location Pinning
+          Row(
+            children: [
+              Expanded(
+                child: SpatiallyPrimaryButton(
+                  label: 'Navigate to ${poi != null ? poi!.name : zone!.roomNumber}',
+                  icon: const Icon(Icons.navigation_rounded, color: Colors.white, size: 18),
+                  onPressed: onNavigate,
+                ),
+              ),
+              if (zone != null && onSetCurrentZone != null) ...[
+                const SizedBox(width: 8),
+                IconButton.filledTonal(
+                  onPressed: isCurrentZone ? null : onSetCurrentZone,
+                  style: IconButton.styleFrom(
+                    backgroundColor: isCurrentZone
+                        ? SpatiallyColors.spatialCyan.withValues(alpha: 0.15)
+                        : (isDark ? SpatiallyColors.darkSurfaceElevated : const Color(0xFFF1F4FA)),
+                    foregroundColor: isCurrentZone ? SpatiallyColors.spatialCyan : textPrimary,
+                    padding: const EdgeInsets.all(12),
+                  ),
+                  tooltip: isCurrentZone ? 'You are here' : 'Set as my location',
+                  icon: Icon(
+                    isCurrentZone ? Icons.my_location_rounded : Icons.pin_drop_outlined,
+                    size: 20,
+                  ),
+                ),
+              ],
+            ],
           ),
         ],
       ),
