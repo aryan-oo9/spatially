@@ -306,14 +306,19 @@ export default function OrganizerCrowd() {
             <div className="stat-card">
               <div className="stat-icon info"><LuUsers /></div>
               <div>
-                <div className="stat-value">{totalCrowd}</div>
-                <div className="stat-label">Active Presence (BLE Devices)</div>
+                <div className="stat-value">{totalCrowd + (crowdData?.carried_proxies || 0)}</div>
+                <div className="stat-label">
+                  Total Attendance
+                  <span style={{ display: "block", fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                    {totalCrowd} Active Devices + {crowdData?.carried_proxies || 0} Carried Proxies
+                  </span>
+                </div>
               </div>
             </div>
             <div className="stat-card">
-              <div className="stat-icon" style={{ color: getDensityColor(totalCrowd, totalCapacity) }}><LuTrendingUp /></div>
+              <div className="stat-icon" style={{ color: getDensityColor(totalCrowd + (crowdData?.carried_proxies || 0), totalCapacity) }}><LuTrendingUp /></div>
               <div>
-                <div className="stat-value">{totalCapacity > 0 ? Math.round((totalCrowd / totalCapacity) * 100) : 0}%</div>
+                <div className="stat-value">{totalCapacity > 0 ? Math.round(((totalCrowd + (crowdData?.carried_proxies || 0)) / totalCapacity) * 100) : 0}%</div>
                 <div className="stat-label">Overall Venue Utilization</div>
               </div>
             </div>
@@ -592,6 +597,11 @@ export default function OrganizerCrowd() {
                     <div style={{ fontSize: "0.9rem", color: "var(--text-muted)", paddingBottom: "4px" }}>
                       / {capacity > 0 ? capacity : "∞"} max capacity ({Math.round(ratio * 100)}%)
                     </div>
+                    {data.carried_proxies > 0 && (
+                      <div style={{ marginLeft: "auto", padding: "2px 8px", borderRadius: "12px", background: "rgba(139, 92, 246, 0.15)", color: "#A78BFA", fontSize: "0.75rem", fontWeight: "600", display: "flex", alignItems: "center", gap: "4px" }}>
+                        <LuUsers size={12} /> +{data.carried_proxies} Proxies
+                      </div>
+                    )}
                   </div>
                   
                   {capacity > 0 && (

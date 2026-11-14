@@ -12,6 +12,8 @@ import 'lost_found_screen.dart';
 import 'models/safety_models.dart';
 import 'widgets/safety_action_card.dart';
 import 'widgets/safety_resource_tile.dart';
+import '../proxy/data/supabase_proxy_attendance_repository_impl.dart';
+import '../proxy/widgets/proxy_request_bottom_sheet.dart';
 
 /// Spatially Attendee Safety, Emergency & Venue Help Hub.
 /// 
@@ -458,7 +460,91 @@ class _SafetyScreenState extends State<SafetyScreen> {
 
                     SpatiallySpacing.gapVerticalXl,
 
-                    // SECTION 3: VENUE ASSISTANCE & FACILITIES
+                    // SECTION 3: PROXY ATTENDANCE DELEGATION
+                    const SpatiallySectionHeader(
+                      title: 'Battery & Proxy Attendance',
+                      subtitle: 'Delegate your event check-in to a friend if your phone is running low',
+                    ),
+                    SpatiallySpacing.gapVerticalSm,
+                    SpatiallyCard(
+                      padding: const EdgeInsets.all(SpatiallySpacing.md),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: SpatiallyColors.warning.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(SpatiallyRadius.sm),
+                                ),
+                                child: const Icon(
+                                  Icons.battery_alert_rounded,
+                                  color: SpatiallyColors.warning,
+                                  size: 20,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Low Battery Protection',
+                                      style: SpatiallyTypography.subheading(
+                                        color: isDark ? SpatiallyColors.darkTextPrimary : SpatiallyColors.lightTextPrimary,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Maintain your presence & check-in through a friend',
+                                      style: SpatiallyTypography.caption(
+                                        color: isDark ? SpatiallyColors.darkTextSecondary : SpatiallyColors.lightTextSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'If your phone battery is discharging, you can delegate your attendance to a checked-in friend. They carry your presence (carried weight 2) so your event status is preserved.',
+                            style: SpatiallyTypography.body(
+                              color: isDark ? SpatiallyColors.darkTextSecondary : SpatiallyColors.lightTextSecondary,
+                            ).copyWith(fontSize: 13, height: 1.4),
+                          ),
+                          const SizedBox(height: 14),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: () {
+                                ProxyRequestBottomSheet.show(
+                                  context: context,
+                                  eventId: eventId,
+                                  eventName: eventTitle,
+                                  repository: SupabaseProxyAttendanceRepositoryImpl(),
+                                );
+                              },
+                              icon: const Icon(Icons.person_add_alt_1_rounded, size: 16),
+                              label: const Text('Delegate Attendance to Friend'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: SpatiallyColors.violet,
+                                side: const BorderSide(color: SpatiallyColors.violet),
+                                visualDensity: VisualDensity.compact,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(SpatiallyRadius.sm),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    SpatiallySpacing.gapVerticalXl,
+
+                    // SECTION 4: VENUE ASSISTANCE & FACILITIES
                     const SpatiallySectionHeader(
                       title: 'Venue Assistance',
                       subtitle: 'On-site attendee desks and support services',

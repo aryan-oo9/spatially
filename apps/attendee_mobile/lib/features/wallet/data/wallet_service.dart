@@ -363,13 +363,38 @@ class WalletService extends ChangeNotifier {
     return changed;
   }
 
+  /// Checks whether the current user is active as a proxy requester (delegated) in an event.
+  Future<bool> isUserProxyDelegated(String eventId) async {
+    final user = _currentUser;
+    if (user == null) return false;
+    try {
+      final res = await Supabase.instance.client
+          .from('proxy_attendance_sessions')
+          .select('id')
+          .eq('event_id', eventId)
+          .eq('requester_user_id', user.id)
+          .eq('status', 'active')
+          .maybeSingle();
+      return res != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Credits points earned immediately when a quest is verified in the app.
+  /// Enforces ADR 0002: Gamified quest completion points are blocked while attendance is delegated to a proxy.
   Future<void> creditQuestPoints({
     required int points,
     required String activityTitle,
     required String activityId,
+    String? eventId,
   }) async {
     if (points <= 0) return;
+
+    if (eventId != null && await isUserProxyDelegated(eventId)) {
+      debugPrint('WalletService: Quest points blocked because user attendance is currently delegated to a proxy');
+      return;
+    }
 
     // Check idempotency
     final exists = _transactions.any(

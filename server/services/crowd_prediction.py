@@ -385,3 +385,35 @@ def predict(
     projected, drivers = propagate_pressure(
         zones, graph, levels, trends, horizon_min, arrivals_per_min, sessions, now)
     return score_zones(zones, graph, levels, projected, drivers, counts, latest, horizon_min, now)
+
+
+def calculate_zone_occupancy_with_proxies(
+    zone_device_counts: Dict[str, int],
+    zone_hosts: Dict[str, List[str]],
+    active_proxy_sessions: List[Dict[str, Any]],
+) -> Tuple[Dict[str, int], Dict[str, int]]:
+    """
+    Computes zone occupancy factoring in carried proxy weights (ADR 0002).
+    Each active proxy carried by a host in a zone adds +1 to that zone's occupancy.
+    A host can carry at most 2 active proxies (maximum carried weight of 3).
+    
+    Returns:
+      (weighted_zone_counts, carried_proxies_per_zone)
+    """
+    # Count active proxies per host (capped at 2 proxies, total weight <= 3)
+    host_proxy_counts: Dict[str, int] = {}
+    for session in active_proxy_sessions:
+        if session.get("status") == "active":
+            h_id = str(session.get("host_user_id"))
+            host_proxy_counts[h_id] = min(host_proxy_counts.get(h_id, 0) + 1, 2)
+
+    weighted_counts = dict(zone_device_counts)
+    zone_carried_proxies: Dict[str, int] = {}
+
+    for zone_id, hosts in zone_hosts.items():
+        proxies_in_zone = sum(host_proxy_counts.get(str(h), 0) for h in hosts)
+        zone_carried_proxies[zone_id] = proxies_in_zone
+        weighted_counts[zone_id] = weighted_counts.get(zone_id, 0) + proxies_in_zone
+
+    return weighted_counts, zone_carried_proxies
+

@@ -429,6 +429,17 @@ async def update_event_status(
         raise HTTPException(status_code=400, detail=f"Invalid status '{new_status}'. Allowed: {valid_statuses}")
 
     result = supabase.table("events").update({"status": new_status}).eq("id", event_id).execute()
+
+    # Automatically expire active/pending proxy attendance sessions upon event conclusion (ADR 0002)
+    if new_status in ["ended", "completed"]:
+        try:
+            supabase.table("proxy_attendance_sessions").update({
+                "status": "expired",
+                "revoked_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("event_id", event_id).in_("status", ["pending", "active"]).execute()
+        except Exception:
+            pass
+
     return {"message": f"Event status updated to {new_status}", "event": result.data[0]}
 
 

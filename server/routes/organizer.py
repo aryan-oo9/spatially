@@ -761,12 +761,33 @@ async def get_crowd_data(event_id: str, current_user: dict = Depends(require_org
     # Evaluate automated crowd diversion if enabled
     auto_quest = await check_and_auto_dispatch_diversion(supabase, event_id, current_user["user_id"])
 
+    # Active proxy attendance breakdown (ADR 0002)
+    active_proxies = []
+    try:
+        p_res = (
+            supabase.table("proxy_attendance_sessions")
+            .select("id, host_user_id, requester_user_id")
+            .eq("event_id", event_id)
+            .eq("status", "active")
+            .execute()
+        )
+        active_proxies = p_res.data or []
+    except Exception:
+        active_proxies = []
+
+    carried_proxy_count = len(active_proxies)
+    active_device_count = sum(zd["active_count"] for zd in zone_density.values())
+    total_attendance = active_device_count + carried_proxy_count
+
     return {
         "zone_density": zone_density,
         "raw_counts": counts.data,
         "zones": zones.data,
         "auto_diversion_enabled": event_id in AUTO_DIVERSION_EVENTS,
         "auto_diversion_dispatched": auto_quest is not None,
+        "total_attendance": total_attendance,
+        "active_devices": active_device_count,
+        "carried_proxies": carried_proxy_count,
     }
 
 

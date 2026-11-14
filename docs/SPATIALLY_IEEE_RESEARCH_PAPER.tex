@@ -6,6 +6,7 @@
 \usepackage{textcomp}
 \usepackage{xcolor}
 \usepackage{booktabs}
+\usepackage{tabularx}
 \usepackage{url}
 \usepackage[scaled=0.92]{helvet}          % Helvetica for figure text (IEEE: Arial/Helvetica/Times)
 \usepackage{tikz}
@@ -14,9 +15,12 @@
 \pgfplotsset{compat=1.18}
 \usepackage{stfloats}
 
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+\newcolumntype{C}{>{\centering\arraybackslash}X}
+
 % ---- common axis style: 8 pt labels, 7 pt ticks/legend, grayscale-safe, thin rules ----
 \pgfplotsset{ieee/.style={
-  width=0.93\columnwidth, height=5.0cm,
+  width=0.93\columnwidth, height=4.3cm,
   every axis label/.append style={font=\sffamily\footnotesize},
   tick label style={font=\sffamily\scriptsize},
   legend style={font=\sffamily\scriptsize, draw=black, line width=0.4pt,
@@ -91,7 +95,7 @@ ankita.amburle@fragnel.edu.in}%
 \maketitle
 
 \begin{abstract}
-Managing crowd safety across large-scale indoor and multi-level venues remains a critical public safety challenge. Conventional monitoring systems rely either on privacy-invasive camera or Media Access Control (MAC) surveillance, or on deep learning models that suffer from cold-start failures in temporary venues lacking historical training data. Furthermore, existing event dashboards operate reactively and lack closed-loop mechanisms to redistribute foot traffic. This paper presents \emph{Spatially}, an end-to-end, privacy-preserving event intelligence and crowd coordination platform uniting Attendee Mobile, Volunteer Mobile, and Organizer Web Command surfaces. Spatially introduces three technical contributions: (1) a Bluetooth Low Energy (BLE) telemetry pipeline free of personally identifiable information (PII), using rotating 6-byte SHA-256 ephemeral identifiers, sticky service-UUID filtering, and an offline-resilient SQLite outbox; (2) a training-free, three-layer macroscopic overcrowding predictor combining irregular-interval Holt exponential smoothing, floorplan-derived topology graphs, mass-conserving hydraulic spillover, and timetable-driven session surges; and (3) a closed-loop mitigation architecture pairing volunteer waveform haptics with generative AI \emph{Flash Surge Diversion Quests} to incentivize voluntary attendee dispersal. Evaluation across 205 mobile tests, Android hardware trials, and multi-scale benchmarks demonstrates 25-zone, 15~min horizon inference in 0.751~ms (4.724~ms for 100 zones), exact mass conservation ($<10^{-6}$ residual), and 12.3~min early-warning lead times.
+Managing crowd safety across large-scale indoor and multi-level venues remains a major public safety challenge. Conventional monitoring systems rely either on privacy-invasive camera or Media Access Control (MAC) surveillance, or on deep learning models that suffer from cold-start failures in temporary venues lacking historical training data. Furthermore, existing event dashboards operate reactively and lack closed-loop mechanisms to redistribute foot traffic. This paper presents \emph{Spatially}, an end-to-end, privacy-preserving event intelligence and crowd coordination platform uniting attendee mobile, volunteer mobile, and organizer web command surfaces. Spatially introduces three technical contributions: (1) a Bluetooth Low Energy (BLE) telemetry pipeline free of personally identifiable information (PII), using rotating 6-byte SHA-256 ephemeral identifiers, sticky service-UUID filtering, and an offline-resilient local relational outbox; (2) a training-free, three-layer macroscopic overcrowding predictor combining irregular-interval Holt exponential smoothing, floorplan-derived topology graphs, mass-conserving hydraulic spillover, and timetable-driven session surges; and (3) a closed-loop mitigation architecture pairing non-visual volunteer waveform haptics with generative AI surge-diversion tasks to incentivize voluntary attendee dispersal. Evaluation across 205 mobile tests, Android hardware trials, and multi-scale benchmarks demonstrates 25-zone, 15~min horizon inference in 0.751~ms (4.724~ms for 100 zones), exact mass conservation ($<10^{-6}$ residual), and 12.3~min early-warning lead times.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -100,7 +104,7 @@ Bluetooth Low Energy, Crowd Monitoring, Data Privacy, Exponential Smoothing, Gra
 
 \section{Introduction}
 \label{sec:intro}
-Large-scale physical gatherings---such as technical conferences, stadium exhibitions, multi-track conventions, and music festivals---transform constrained architectural spaces into high-density, rapidly evolving pedestrian networks. As global urbanization and event attendance intensify, preventing localized overcrowding and crowd-crush incidents has become a paramount public safety priority \cite{hoogendoorn2004, liang2024}. Forensic analyses of recent high-density pedestrian disasters, including the 2022 Itaewon crowd crush, reveal that fatal congestion rarely occurs instantaneously; rather, it is preceded by a 15--30~min accumulation window during which localized pedestrian inflows consistently exceed structural egress capacities \cite{liang2024, kim2026}. Consequently, shifting event operations from retrospective observation to proactive, short-horizon anticipation (5--20~min ahead) is essential to provide safety directors and on-ground staff with the operational buffer required to throttle gate admissions, stage personnel, and redirect foot traffic \cite{daamen2026, yasufuku2024}.
+Large-scale physical gatherings---such as technical conferences, stadium exhibitions, multi-track conventions, and music festivals---transform constrained architectural spaces into high-density, rapidly evolving pedestrian networks. As global urbanization and event attendance intensify, preventing localized overcrowding and crowd-crush incidents has become a major public safety requirement \cite{hoogendoorn2004, liang2024}. Forensic analyses of recent high-density pedestrian disasters, including the 2022 Itaewon crowd crush, reveal that fatal congestion rarely occurs instantaneously; rather, it is preceded by a 15--30~min accumulation window during which localized pedestrian inflows consistently exceed structural egress capacities \cite{liang2024, kim2026}. Consequently, shifting event operations from retrospective observation to proactive, short-horizon anticipation (5--20~min ahead) is essential to provide safety directors and on-ground staff with the operational buffer required to throttle gate admissions, stage personnel, and redirect foot traffic \cite{daamen2026, yasufuku2024}.
 
 Despite extensive research in pedestrian dynamics and indoor positioning, deploying real-time crowd intelligence in temporary or reconfigurable event venues presents four fundamental systems engineering challenges:
 \begin{enumerate}
@@ -110,30 +114,30 @@ Despite extensive research in pedestrian dynamics and indoor positioning, deploy
     \item \emph{Open-Loop Operational Silos:} Traditional crowd monitoring dashboards terminate at passive visualization \cite{yasufuku2024}. Even when an organizer observes an impending bottleneck on a heatmap, translating that insight into physical crowd dispersal requires slow, manual radio coordination and lacks direct behavioral incentives for attendees.
 \end{enumerate}
 
-To address these challenges, this paper presents \textbf{Spatially}, a unified, privacy-preserving event operations and spatial crowd intelligence platform. Spatially bridges three distinct client and control tiers over a shared, Row-Level Security (RLS)-hardened PostgreSQL real-time backend: (1) an \emph{Attendee Mobile Application}, (2) a \emph{Volunteer Staff Mobile Application}, and (3) an \emph{Organizer Command Web Platform and Intelligence Engine}.
+To address these challenges, this paper presents \textbf{Spatially}, a unified, privacy-preserving event operations and spatial crowd intelligence platform. Spatially bridges three distinct client and control tiers over a shared, Row-Level Security (RLS)-hardened relational real-time backend: (1) an \emph{Attendee Mobile Client}, (2) a \emph{Volunteer Staff Mobile Client}, and (3) an \emph{Organizer Command Web Portal and Intelligence Engine}.
 
 The primary contributions of this work are as follows:
 \begin{itemize}
-    \item \textbf{A Zero-PII, Offline-Resilient BLE Crowd Sensing Architecture:} We design and implement a cross-layer Bluetooth Low Energy (BLE) mobile telemetry protocol free of personally identifiable information (PII), combining rotating 6-byte SHA-256 ephemeral advertising, sticky Universally Unique Identifier (UUID) classification to overcome Android scan-response fragmentation, a 10~s deduplication and 45~s expiry window, and a durable SQLite v7 write-behind outbox with PostgreSQL \texttt{FOR UPDATE} atomic ticket reconciliation (Section~\ref{sec:arch}).
+    \item \textbf{A Zero-PII, Offline-Resilient BLE Crowd Sensing Architecture:} We design and implement a cross-layer Bluetooth Low Energy (BLE) mobile telemetry protocol free of personally identifiable information (PII), combining rotating 6-byte SHA-256 ephemeral advertising, sticky Universally Unique Identifier (UUID) classification to overcome Android scan-response fragmentation, a 10~s deduplication and 45~s expiry window, and a durable local relational write-behind outbox with row-locked atomic ticket reconciliation (Section~\ref{sec:arch}).
     \item \textbf{A Training-Free, Mass-Conserving Macroscopic Graph Predictor:} We formulate a three-layer deterministic forecasting algorithm that couples irregular-interval Holt linear smoothing with boundary-derived zone graphs, capacity-headroom-weighted hydraulic spillover, and exogenous session schedule covariance, achieving sub-millisecond inference without historical training data (Section~\ref{sec:pred}).
-    \item \textbf{Closed-Loop Socio-Technical Crowd Actuation:} We introduce a dual-channel mitigation paradigm combining a zero-double-counting volunteer attention engine (featuring pocket-friendly Android haptics and atomic shift/coverage state machines) with a generative AI/heuristic gamification agent that incentivizes voluntary crowd dispersion via time-bounded \emph{Flash Surge Quests} (Section~\ref{sec:actuation}).
-    \item \textbf{Comprehensive Empirical and Hardware Validation:} We evaluate Spatially across 205 automated mobile unit/integration tests, physical Android hardware field trials (Nothing Phone A059P), and multi-scale simulation benchmarks, demonstrating sub-5~ms scalability up to 100 zones, exact pedestrian mass conservation, and 12.3~min early-warning lead times on multi-hop keynote dispersal bottlenecks (Section~\ref{sec:eval}).
+    \item \textbf{Closed-Loop Socio-Technical Crowd Actuation:} We introduce a dual-channel mitigation paradigm combining a deduplicated volunteer attention router (featuring non-visual tactile Android haptics and atomic shift-coverage state machines) with a generative AI and heuristic task-generation agent that incentivizes voluntary crowd dispersion via time-bounded redirection tasks (Section~\ref{sec:actuation}).
+    \item \textbf{Comprehensive Empirical and Hardware Validation:} We evaluate Spatially across 205 automated mobile unit and integration tests, physical Android hardware field trials, and multi-scale simulation benchmarks, demonstrating sub-5~ms scalability up to 100 zones, exact pedestrian mass conservation, and 12.3~min early-warning lead times on multi-hop keynote dispersal bottlenecks (Section~\ref{sec:eval}).
 \end{itemize}
 
-The remainder of this paper is organized as follows. Section~\ref{sec:related} reviews related literature. Section~\ref{sec:arch} details the system architecture and BLE sensing pipeline. Section~\ref{sec:pred} presents the mathematical formulation of the overcrowding prediction engine. Section~\ref{sec:actuation} describes the closed-loop operational actuation and gamified surge diversion mechanism. Section~\ref{sec:eval} reports experimental results and ablation studies. Section~\ref{sec:discussion} discusses limitations, and Section~\ref{sec:conclusion} concludes the paper.
+The remainder of this paper is organized as follows. Section~\ref{sec:related} reviews related literature. Section~\ref{sec:arch} details the system architecture and BLE sensing pipeline. Section~\ref{sec:pred} presents the mathematical formulation of the overcrowding prediction engine. Section~\ref{sec:actuation} describes the closed-loop operational actuation and surge-diversion mechanism. Section~\ref{sec:eval} reports experimental results and ablation studies. Section~\ref{sec:discussion} discusses limitations and threats to validity, and Section~\ref{sec:conclusion} concludes the paper. Concrete software module and schema mappings are summarized in the Appendix.
 
 \section{Related Work}
 \label{sec:related}
 Table~\ref{tab:related_work} compares Spatially with representative crowd monitoring and forecasting frameworks across key architectural criteria.
 
-\begin{table}[!htbp]
+\begin{table}[!t]
 \centering
 \caption{Comparison with Crowd Monitoring Frameworks}
 \label{tab:related_work}
 \footnotesize
 \setlength{\tabcolsep}{3pt}
-\renewcommand{\arraystretch}{1.15}
-\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lcccc@{}}
+\renewcommand{\arraystretch}{1.1}
+\begin{tabularx}{\columnwidth}{@{}LcccC@{}}
 \toprule
 \textbf{Study} & \textbf{Sensing} & \textbf{No-Train} & \textbf{Graph Flow} & \textbf{Actuation} \\
 \midrule
@@ -145,7 +149,7 @@ Daamen \cite{daamen2026} & Sensors & Yes & Corridor & Advisory \\
 Jeong \cite{jeong2026} & Beacons & Partial & Grid Twin & Alerting \\
 \textbf{Spatially} & \textbf{BLE+QR} & \textbf{Yes} & \textbf{2-Hop+Sched} & \textbf{Haptic+AI} \\
 \bottomrule
-\end{tabular*}
+\end{tabularx}
 \end{table}
 
 \subsection{Short-Term Crowd Forecasting and Operational Dashboards}
@@ -161,101 +165,101 @@ Mart\'in-Frechina et al. \cite{martin2025} confirmed that BLE proximity sensing 
 
 \section{System Architecture and Privacy-Preserving Telemetry}
 \label{sec:arch}
-Spatially is architected as a four-tier cyber-physical system comprising two Flutter Android edge clients (\texttt{attendee\_mobile} and \texttt{volunteer\_mobile}), a React 19 / Vite operational command portal (\texttt{client/}) tracking Point of Interest (POI) layouts and Incident Service-Level Agreement (SLA) metrics---specifically Mean Time to Acknowledge (MTTA) and Mean Time to Resolve (MTTR)---a Python FastAPI intelligence service (\texttt{server/}), and a shared Supabase PostgreSQL backend (\texttt{supabase/migrations/}) with RLS, transactional Remote Procedure Calls (RPCs), and Change Data Capture (CDC) Realtime channels, as illustrated in Fig.~\ref{fig:arch}.
+Spatially is architected as a four-tier cyber-physical system comprising two mobile edge clients (an attendee client and a volunteer staff client), a web-based operational command portal tracking Point of Interest (POI) layouts and Incident Service-Level Agreement (SLA) metrics---specifically Mean Time to Acknowledge (MTTA) and Mean Time to Resolve (MTTR)---a stateless forecasting and task-generation service, and a shared PostgreSQL backend enforcing RLS, transactional Remote Procedure Calls (RPCs), and Change Data Capture (CDC) real-time broadcast channels, as illustrated in Fig.~\ref{fig:arch}.
 
 % ============================================================
-%  FIG. 1 -- four-tier architecture  (replace the whole figure* block)
+%  FIG. 1 -- compact four-tier conceptual architecture
 % ============================================================
 \begin{figure*}[!t]
 \centering
 \resizebox{\textwidth}{!}{%
 \begin{tikzpicture}[font=\sffamily\scriptsize,
   box/.style={draw=black, line width=0.4pt, rounded corners=1.5pt, fill=white,
-              align=center, inner sep=2pt, minimum height=1.5cm},
+              align=center, inner sep=1.8pt, minimum height=1.08cm},
   w39/.style={box, text width=3.7cm},
   w31/.style={box, text width=2.9cm},
   w24/.style={box, text width=2.2cm},
-  arr/.style={-{Stealth[length=1.8mm,width=1.4mm]}, line width=0.6pt},
-  biarr/.style={{Stealth[length=1.8mm,width=1.4mm]}-{Stealth[length=1.8mm,width=1.4mm]}, line width=0.6pt},
+  arr/.style={-{Stealth[length=1.6mm,width=1.2mm]}, line width=0.55pt},
+  biarr/.style={{Stealth[length=1.6mm,width=1.2mm]}-{Stealth[length=1.6mm,width=1.2mm]}, line width=0.55pt},
   lblr/.style={anchor=west, xshift=2pt, align=left, text width=3.4cm, inner sep=1pt},
   lbll/.style={anchor=east, xshift=-2pt, align=right, text width=1.7cm, inner sep=1pt},
   grp/.style={draw=black, dashed, line width=0.4pt, rounded corners=2pt, fill=white}]
 
 % ---------- Tier 1 ----------
-\tierframe{0}{-2.5}{-1.25}{Tier 1\\Edge clients}
-\draw[grp] (0.8,-0.1) rectangle (8.8,-2.4);
-\node[anchor=north west, font=\sffamily\bfseries\scriptsize] at (0.9,-0.12) {Attendee mobile client};
-\draw[grp] (9.5,-0.1) rectangle (17.5,-2.4);
-\node[anchor=north west, font=\sffamily\bfseries\scriptsize] at (9.6,-0.12) {Volunteer mobile client};
+\tierframe{0}{-1.9}{-0.95}{Tier 1\\Edge}
+\draw[grp] (0.8,-0.08) rectangle (8.8,-1.82);
+\node[anchor=north west, font=\sffamily\bfseries\scriptsize] at (0.9,-0.1) {Attendee mobile client};
+\draw[grp] (9.5,-0.08) rectangle (17.5,-1.82);
+\node[anchor=north west, font=\sffamily\bfseries\scriptsize] at (9.6,-0.1) {Volunteer mobile client};
 
-\node[w24] (a1) at (2.1,-1.5)  {\textbf{Passport \& Quests}\\Stamp ledger\\Surge-quest feed\\1-tap safety help};
-\node[w24] (a2) at (4.8,-1.5)  {\textbf{Map \& QR Pass}\\Multi-level map\\Live heatmap\\Signed QR pass};
-\node[w24] (a3) at (7.5,-1.5)  {\textbf{BLE Beacon}\\ID \texttt{0xFFFF}\\6-byte hash $E_t$\\Service UUID};
-\node[w24] (v1) at (10.8,-1.5) {\textbf{BLE Scanner}\\RSSI $>-128$ dBm\\Sticky UUID gate\\10 s / 45 s windows};
-\node[w24] (v2) at (13.5,-1.5) {\textbf{SQLite v7 Outbox}\\{\tiny\texttt{observation\_queue}}\\Offline check-ins\\15--30 s flush};
-\node[w24] (v3) at (16.2,-1.5) {\textbf{Attention Router}\\Zero double-count\\Waveform haptics\\Shift \& incidents};
+\node[w24] (a1) at (2.1,-1.15)  {\textbf{Passport \& Tasks}\\Booth stamp ledger\\Diversion task feed\\Direct safety help};
+\node[w24] (a2) at (4.8,-1.15)  {\textbf{Map \& QR Pass}\\Multi-level map\\Live zone heatmap\\Signed QR credential};
+\node[w24] (a3) at (7.5,-1.15)  {\textbf{BLE Beacon}\\Company ID \texttt{0xFFFF}\\48-bit hash $b_t$\\128-bit service UUID};
+\node[w24] (v1) at (10.8,-1.15) {\textbf{BLE Scanner}\\RSSI $>-128$ dBm\\Sticky UUID filter\\$\tau_{\mathrm{dedup}}{=}10$ s, $\tau_{\mathrm{exp}}{=}45$ s};
+\node[w24] (v2) at (13.5,-1.15) {\textbf{Local SQLite Outbox}\\Write-behind queue\\Offline check-ins\\15--30 s batch flush};
+\node[w24] (v3) at (16.2,-1.15) {\textbf{Attention Router}\\Deduplicated feed\\Waveform haptics\\Shift \& incident ops};
 \draw[arr] (a3.east) -- node[above, inner sep=1pt]{BLE} (v1.west);
 \draw[arr] (v1.east) -- (v2.west);
 
 % ---------- Tier 2 ----------
-\tierframe{-3.5}{-5.4}{-4.45}{Tier 2\\Data tier}
-\node[w39] at (2.85,-4.45)  {\textbf{Spatial Topology}\\\texttt{venues}, \texttt{venue\_levels}\\\texttt{venue\_zones}, \texttt{event\_zones}\\\texttt{pois}, bounds in $[0,1]^2$};
-\node[w39] at (7.05,-4.45)  {\textbf{Telemetry Ledger}\\\texttt{volunteer\_counts}\\\texttt{crowd\_zone\_snapshots}\\\texttt{tickets}, \texttt{sessions}};
-\node[w39] at (11.25,-4.45) {\textbf{Operational State}\\\texttt{operational\_incidents}\\\texttt{volunteer\_shifts}\\\texttt{attendee\_engagements}};
-\node[w39] at (15.45,-4.45) {\textbf{RPCs \& Realtime}\\\texttt{check\_in\_ticket}\\\texttt{FOR UPDATE} row lock\\CDC broadcast channels};
+\tierframe{-2.6}{-4.05}{-3.325}{Tier 2\\Data}
+\node[w39] at (2.85,-3.325)  {\textbf{Spatial Topology Store}\\Multi-level floor hierarchy\\Zone bounds $B_i \subset [0,1]^2$\\POIs \& vertical links};
+\node[w39] at (7.05,-3.325)  {\textbf{Telemetry Ledger}\\Volunteer BLE headcounts\\Zone occupancy snapshots\\Gate check-ins \& schedule};
+\node[w39] at (11.25,-3.325) {\textbf{Operational State}\\Incident lifecycle ledger\\Staff shift assignments\\Task completion records};
+\node[w39] at (15.45,-3.325) {\textbf{RPCs \& Realtime}\\Row-locked ticket check-in\\Atomic coverage handoff\\CDC broadcast channels};
 
 % ---------- Tier 3 ----------
-\tierframe{-6.4}{-8.4}{-7.4}{Tier 3\\Intelligence}
-\node[w31] at (2.45,-7.4)  {\textbf{S1: Graph Builder}\\Shared-border $\tilde w_{ij}$\\Stair/elevator links\\Row-normalized $W$};
-\node[w31] at (5.8,-7.4)   {\textbf{S2: Holt Smoother}\\Irregular step $\Delta t_k$\\Level $L_i$, trend $T_i$\\$\alpha{=}0.5,\ \beta{=}0.3$};
-\node[w31] at (9.15,-7.4)  {\textbf{S3: Flow Engine}\\Gate inflow $\lambda_i H$\\Session surge $\Delta S_i$\\2-hop spillover};
-\node[w31] at (12.5,-7.4)  {\textbf{S4: Risk \& ETA}\\Freshness $\phi$, conf. $\mathcal{C}_i$\\Breach ETA, drivers\\Risk tier $\mathcal{R}_i$};
-\node[w31] at (15.85,-7.4) {\textbf{Diversion Agent}\\Gemini Flash cascade\\Heuristic fallback\\Mints 150-pt quests};
-\draw[arr] (4.0,-7.4) -- (4.25,-7.4);
-\draw[arr] (7.35,-7.4) -- (7.6,-7.4);
-\draw[arr] (10.7,-7.4) -- (10.95,-7.4);
+\tierframe{-4.75}{-6.2}{-5.475}{Tier 3\\Engine}
+\node[w31] at (2.45,-5.475)  {\textbf{S1: Graph Builder}\\Shared-border $\tilde w_{ij}$\\Vertical connectors\\Row-normalized $W$};
+\node[w31] at (5.8,-5.475)   {\textbf{S2: Holt Smoother}\\Irregular step $\Delta t_k$\\Level $L_i$, velocity $v_i$\\$\alpha{=}0.5,\ \beta{=}0.3$};
+\node[w31] at (9.15,-5.475)  {\textbf{S3: Flow Engine}\\Gate inflow $\lambda_i H$\\Session surge $S_i$\\2-hop spillover};
+\node[w31] at (12.5,-5.475)  {\textbf{S4: Risk \& ETA}\\Freshness $\phi$, conf. $\kappa_i$\\Breach ETA, drivers\\Risk tier $\mathcal{R}_i$};
+\node[w31] at (15.85,-5.475) {\textbf{Diversion Agent}\\LLM cascade + fallback\\Target headroom rank\\Issues 150-pt tasks};
+\draw[arr] (4.0,-5.475) -- (4.25,-5.475);
+\draw[arr] (7.35,-5.475) -- (7.6,-5.475);
+\draw[arr] (10.7,-5.475) -- (10.95,-5.475);
 
 % ---------- Tier 4 ----------
-\tierframe{-9.4}{-11.4}{-10.4}{Tier 4\\Organizer web}
-\node[w39] at (2.85,-10.4)  {\textbf{Venue Editor}\\Multi-level SVG zones\\POI \& connector authoring\\Live occupancy heatmap};
-\node[w39] at (7.05,-10.4)  {\textbf{Overcrowding Console}\\15~min forecast, risk tier\\Breach-ETA chips\\Driver attribution};
-\node[w39] at (11.25,-10.4) {\textbf{Incident \& Workforce}\\Kanban triage, MTTA/MTTR\\Shift coverage matrix\\Mandatory-ack broadcasts};
-\node[w39] at (15.45,-10.4) {\textbf{Crowd Actuation}\\1-click surge quests\\Target-headroom picker\\Gate-throttle advisories};
+\tierframe{-6.9}{-8.35}{-7.625}{Tier 4\\Command}
+\node[w39] at (2.85,-7.625)  {\textbf{Venue Editor}\\Multi-level SVG zones\\POI \& connector authoring\\Live occupancy heatmap};
+\node[w39] at (7.05,-7.625)  {\textbf{Overcrowding Console}\\15~min forecast, risk tier\\Breach-ETA indicators\\Driver attribution};
+\node[w39] at (11.25,-7.625) {\textbf{Incident \& Workforce}\\Kanban triage, MTTA/MTTR\\Shift coverage matrix\\Mandatory-ack broadcasts};
+\node[w39] at (15.45,-7.625) {\textbf{Crowd Actuation}\\Operator task dispatch\\Target-headroom selector\\Gate-throttle advisories};
 
 % ---------- inter-tier links ----------
-\draw[arr]   (2.85,-3.5)  -- node[lblr]{Surge quests, alerts (CDC)} (2.85,-2.5);
-\draw[biarr] (7.05,-2.5)  -- node[lblr]{Map, QR pass, check-in} (7.05,-3.5);
-\draw[arr]   (11.25,-2.5) -- node[lblr]{Outbox flush} (11.25,-3.5);
-\draw[arr]   (15.45,-3.5) -- node[lbll]{Haptics,\\shift RPCs} (15.45,-2.5);
+\draw[arr]   (2.85,-2.6)  -- node[lblr]{Diversion tasks, alerts (CDC)} (2.85,-1.9);
+\draw[biarr] (7.05,-1.9)  -- node[lblr]{Map, QR pass, check-in} (7.05,-2.6);
+\draw[arr]   (11.25,-1.9) -- node[lblr]{Outbox flush} (11.25,-2.6);
+\draw[arr]   (15.45,-2.6) -- node[lbll]{Haptics,\\shift RPCs} (15.45,-1.9);
 
-\draw[arr] (2.85,-5.4)  -- node[lblr]{Zone bounds, connectors} (2.85,-6.4);
-\draw[arr] (7.05,-5.4)  -- node[lblr]{Snapshots, gate flow, schedule} (7.05,-6.4);
-\draw[arr] (11.25,-5.4) -- node[lblr]{Health, incidents} (11.25,-6.4);
-\draw[arr] (15.45,-6.4) -- node[lbll]{Mint surge\\quest} (15.45,-5.4);
+\draw[arr] (2.85,-4.05)  -- node[lblr]{Zone bounds, connectors} (2.85,-4.75);
+\draw[arr] (7.05,-4.05)  -- node[lblr]{Snapshots, gate flow, schedule} (7.05,-4.75);
+\draw[arr] (11.25,-4.05) -- node[lblr]{Health, incidents} (11.25,-4.75);
+\draw[arr] (15.45,-4.75) -- node[lbll]{Issue task} (15.45,-4.05);
 
-\draw[arr]   (2.85,-9.4)  -- node[lblr]{Floorplan, capacity config} (2.85,-8.4);
-\draw[arr]   (7.05,-8.4)  -- node[lblr]{Forecast, ETA, drivers} (7.05,-9.4);
-\draw[biarr] (11.25,-8.4) -- node[lblr]{SLA telemetry} (11.25,-9.4);
-\draw[arr]   (15.45,-9.4) -- node[lbll]{Diversion\\trigger} (15.45,-8.4);
+\draw[arr]   (2.85,-6.9)  -- node[lblr]{Floorplan, capacity config} (2.85,-6.2);
+\draw[arr]   (7.05,-6.2)  -- node[lblr]{Forecast, ETA, drivers} (7.05,-6.9);
+\draw[biarr] (11.25,-6.2) -- node[lblr]{SLA telemetry} (11.25,-6.9);
+\draw[arr]   (15.45,-6.9) -- node[lbll]{Diversion\\trigger} (15.45,-6.2);
 \end{tikzpicture}%
 }
-\caption{System architecture of Spatially. Tier~1: Flutter Android clients (zero-PII BLE beacon, volunteer scanner with SQLite outbox, haptic attention routing). Tier~2: Supabase PostgreSQL with 27 RLS-protected tables, atomic ticket RPCs and Realtime CDC. Tier~3: FastAPI four-stage macroscopic predictor and surge-diversion agent. Tier~4: React~19 organizer portal for venue modeling, forecasting and closed-loop actuation.}
+\caption{Conceptual four-tier architecture of Spatially. Tier~1: Mobile edge clients (zero-PII BLE beacon, volunteer scanner with local SQLite outbox, tactile attention router). Tier~2: Relational data store with RLS policies, row-locked RPCs, and real-time CDC channels. Tier~3: Four-stage macroscopic predictor and surge-diversion agent. Tier~4: Organizer command web portal for spatial modeling, forecasting, and closed-loop actuation.}
 \label{fig:arch}
 \end{figure*}
 
 \subsection{Ephemeral BLE Advertising and Sticky Scanner Filtering}
-To eliminate PII from spatial telemetry, Spatially decouples ticket ownership from physical presence sensing. Upon initialization, the Attendee Mobile client generates a local UUID v4 device identifier $u_d$ stored strictly in device-local preferences. During an active event, an Android Foreground Service continuously broadcasts a low-power BLE advertisement carrying the Spatially 128-bit Service UUID (\texttt{f47ac10b-58cc-4372-a567-0e02b2c3d479}) and a 6-byte manufacturer-specific payload under company identifier \texttt{0xFFFF}. The 6-byte ephemeral identifier $E_t$ is derived via a rolling cryptographic hash over $u_d$ and the quantized time epoch $\tau_t = \lfloor t / \Delta_{\mathrm{rot}} \rfloor$:
+To eliminate PII from spatial telemetry, Spatially decouples ticket ownership from physical presence sensing. Upon initialization, the attendee client generates a random UUID v4 seed $u_d$ stored strictly in device-local preferences. During an active event, an Android foreground service broadcasts a low-power BLE advertisement carrying a dedicated 128-bit service UUID and a 6-byte manufacturer-specific payload under test company identifier \texttt{0xFFFF}. The 6-byte ephemeral beacon hash $b_t$ is derived via a rolling cryptographic digest over $u_d$ and the quantized time epoch $\tau_t = \lfloor t / \tau_{\mathrm{rot}} \rfloor$:
 \begin{equation}
-E_t = \mathrm{Trunc}_{48}\!\left(\mathrm{SHA\text{-}256}(u_d \parallel \tau_t)\right),
+b_t = \mathrm{Trunc}_{48}\!\left(\mathrm{SHA\text{-}256}(u_d \parallel \tau_t)\right),
 \label{eq:ble_hash}
 \end{equation}
-where $\mathrm{Trunc}_{48}(\cdot)$ extracts the leading 48 bits and $\Delta_{\mathrm{rot}} \in [5, 15]$~min.
+where $\mathrm{Trunc}_{48}(\cdot)$ extracts the leading 48 bits and $\tau_{\mathrm{rot}} \in [5, 15]$~min denotes the identifier rotation period.
 
-On-duty volunteers run \texttt{BleScannerService} on Android hardware. To overcome Android BLE scan-response fragmentation (where secondary scan packets occasionally omit the 128-bit service UUID list), \texttt{BleScannerService} implements a three-stage state machine (Fig.~\ref{fig:ble_pipeline}):
+On-duty volunteers execute a foreground BLE scanner service on Android hardware. To overcome Android BLE scan-response fragmentation (where secondary scan packets occasionally omit the 128-bit service UUID list), the scanner implements a three-stage state machine (Fig.~\ref{fig:ble_pipeline}):
 \begin{enumerate}
-    \item \emph{Signal Sanity and Ephemeral Extraction:} Scan results with Received Signal Strength Indicator ($\mathrm{RSSI}$) $= -128$~dBm are discarded. If the \texttt{0xFFFF} frame has length 6~bytes, the 12-character hex string is extracted as \texttt{ephemeralId}.
-    \item \emph{Sticky Service-UUID Classification:} Once an \texttt{ephemeralId} is observed advertising \texttt{spatiallyServiceUuid} in any packet, it is added to \texttt{\_confirmedSpatiallyIds} until presence expiry. All non-Spatially ambient Bluetooth devices are dropped at the privacy gate prior to queueing.
-    \item \emph{Deduplication and Presence Expiry Window:} The scanner enforces a deduplication window $\Delta_{\mathrm{dedup}} = 10$~s and a presence timeout $\Delta_{\mathrm{exp}} = 45$~s, evicting expired IDs every 10~s.
+    \item \emph{Signal Sanity and Ephemeral Extraction:} Scan results with Received Signal Strength Indicator ($\mathrm{RSSI}$) $= -128$~dBm (an Android hardware error sentinel) are discarded. If the \texttt{0xFFFF} frame has length 6~bytes, the 48-bit payload is extracted as candidate identifier $b_t$.
+    \item \emph{Sticky Service-UUID Classification:} Once a candidate identifier $b_t$ is observed advertising the platform service UUID in any primary or scan-response packet, it is cached in a confirmed in-memory set until presence expiry. All ambient Bluetooth devices lacking the service UUID are dropped at the privacy gate prior to queueing.
+    \item \emph{Deduplication and Presence Expiry Window:} The scanner enforces a deduplication window $\tau_{\mathrm{dedup}} = 10$~s and a presence timeout $\tau_{\mathrm{exp}} = 45$~s, evicting expired identifiers every 10~s.
 \end{enumerate}
 
 % ============================================================
@@ -265,18 +269,18 @@ On-duty volunteers run \texttt{BleScannerService} on Android hardware. To overco
 \centering
 \begin{tikzpicture}[font=\sffamily\scriptsize,
   stage/.style={draw=black, line width=0.5pt, rounded corners=1.5pt, fill=black!6,
-                align=center, text width=4.6cm, inner sep=3pt, minimum height=0.95cm},
+                align=center, text width=4.5cm, inner sep=2.5pt, minimum height=0.82cm},
   cloud/.style={stage, fill=black!15},
   drop/.style={draw=black, dashed, line width=0.4pt, rounded corners=1.5pt, fill=white,
-               align=center, text width=1.9cm, inner sep=2pt, minimum height=0.7cm},
-  arr/.style={-{Stealth[length=1.8mm,width=1.4mm]}, line width=0.6pt},
-  num/.style={circle, fill=black, text=white, inner sep=0pt, minimum size=0.42cm, font=\sffamily\bfseries\scriptsize},
+               align=center, text width=1.9cm, inner sep=2pt, minimum height=0.65cm},
+  arr/.style={-{Stealth[length=1.6mm,width=1.2mm]}, line width=0.55pt},
+  num/.style={circle, fill=black, text=white, inner sep=0pt, minimum size=0.38cm, font=\sffamily\bfseries\scriptsize},
   note/.style={anchor=west, xshift=3pt, align=left, inner sep=1pt}]
-\node[stage] (s1) at (0,0)     {\textbf{BLE advertisement intake}\\\texttt{0xFFFF} payload, RSSI};
-\node[stage] (s2) at (0,-1.75) {\textbf{Sticky UUID privacy gate}\\ID $\in$ confirmed Spatially set};
-\node[stage] (s3) at (0,-3.5)  {\textbf{Temporal windowing}\\$\Delta_{\mathrm{dedup}}{=}10$ s, $\Delta_{\mathrm{exp}}{=}45$ s};
-\node[stage] (s4) at (0,-5.25) {\textbf{Durable SQLite v7 outbox}\\Observations, offline check-ins};
-\node[cloud] (s5) at (0,-7.0)  {\textbf{Cloud batch upsert}\\\texttt{volunteer\_counts}, zone snapshots};
+\node[stage] (s1) at (0,0)     {\textbf{BLE advertisement intake}\\6-byte payload $b_t$, RSSI};
+\node[stage] (s2) at (0,-1.45) {\textbf{Sticky UUID privacy gate}\\$b_t \in$ confirmed platform set};
+\node[stage] (s3) at (0,-2.9)  {\textbf{Temporal windowing}\\$\tau_{\mathrm{dedup}}{=}10$ s, $\tau_{\mathrm{exp}}{=}45$ s};
+\node[stage] (s4) at (0,-4.35) {\textbf{Local relational outbox}\\Queued observations \& check-ins};
+\node[cloud] (s5) at (0,-5.8)  {\textbf{Cloud batch synchronization}\\Zone snapshots \& atomic RPCs};
 \foreach \i in {1,...,5}{\node[num] at (s\i.north west) {\i};}
 
 \draw[arr] (s1) -- node[note]{RSSI $>-128$ dBm} (s2);
@@ -284,30 +288,58 @@ On-duty volunteers run \texttt{BleScannerService} on Android hardware. To overco
 \draw[arr] (s3) -- node[note]{headcount $L_i(t)$} (s4);
 \draw[arr] (s4) -- node[note]{flush 15--30 s} (s5);
 
-\node[drop] (d1) at (4.2,0)     {Discard:\\RSSI $=-128$ dBm};
-\node[drop] (d2) at (4.2,-1.75) {Discard:\\ambient devices};
+\node[drop] (d1) at (4.15,0)     {Discard:\\RSSI $=-128$ dBm};
+\node[drop] (d2) at (4.15,-1.45) {Discard:\\ambient devices};
 \draw[arr, dashed] (s1.east) -- (d1.west);
 \draw[arr, dashed] (s2.east) -- (d2.west);
 \end{tikzpicture}
-\caption{Five-stage volunteer BLE telemetry pipeline. Non-Spatially and invalid advertisements are discarded before queuing; verified headcounts are persisted locally and flushed to the cloud with an atomic \texttt{FOR UPDATE} reconciliation.}
+\caption{Five-stage volunteer BLE telemetry pipeline. Non-platform and invalid advertisements are discarded before queuing; verified headcounts are persisted locally and flushed to the cloud store.}
 \label{fig:ble_pipeline}
 \end{figure}
 
 \subsection{Offline-Resilient Write-Behind Outbox and Atomic Ticketing}
-Spatially guarantees zero operational data loss in \texttt{volunteer\_mobile} via a local SQLite v7 persistence engine (\texttt{spatially\_queue.db}) containing an \texttt{observation\_queue} (flushed every 15--30~s to \texttt{volunteer\_counts} and \texttt{crowd\_zone\_snapshots}) and \texttt{pending\_ticket\_checkins}. Online QR ticket admissions invoke the PostgreSQL RPC \texttt{check\_in\_ticket}, which acquires a row-level exclusive lock (\texttt{FOR UPDATE}) on \texttt{public.tickets} to prevent concurrent double-entry across turnstiles.
+Spatially prevents operational data loss during venue Wi-Fi outages via a local relational write-behind outbox on the volunteer device. The outbox buffers BLE headcount observations (flushed every 15--30~s to the cloud telemetry ledger) alongside offline ticket check-ins. When connectivity is available, QR ticket admissions invoke a transactional database RPC that acquires an exclusive row-level lock (\texttt{FOR UPDATE}) on the ticket record, preventing concurrent double-entry across parallel turnstiles.
 
 \section{Macroscopic Overcrowding Prediction Engine}
 \label{sec:pred}
-The Spatially Overcrowding Prediction Engine (\texttt{crowd\_prediction.py}) operates in four sequential, purely functional stages over a forecast horizon $H$ (default $H=15$~min).
+The overcrowding prediction engine executes four sequential, stateless stages over a forecast horizon $H$ (default $H=15$~min). Table~\ref{tab:notation} summarizes the mathematical notation used throughout the model.
+
+\begin{table}[!t]
+\centering
+\caption{Summary of Mathematical Notation}
+\label{tab:notation}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.08}
+\begin{tabularx}{\columnwidth}{@{}>{\centering\arraybackslash}p{0.42\columnwidth}L@{}}
+\toprule
+\textbf{Symbol} & \textbf{Definition} \\
+\midrule
+$b_t,\ \tau_{\mathrm{rot}}$ & 48-bit rotating BLE beacon hash and rotation period (min) \\
+$\tau_{\mathrm{dedup}},\ \tau_{\mathrm{exp}}$ & BLE scanner deduplication (10~s) and expiry (45~s) windows \\
+$\mathcal{Z},\ N,\ |\mathcal{E}|$ & Monitored zone set $\{1,\dots,N\}$, zone count, and graph edge count \\
+$B_i,\ \ell_i,\ C_i$ & Normalized 2D bounds $[0,1]^2$, floor level, and capacity of zone $i$ \\
+$\tilde{w}_{ij},\ w_{ij}$ & Unnormalized and row-normalized boundary conductance $i \to j$ \\
+$L_i,\ v_i,\ \bar{v}_i$ & Smoothed headcount, Holt velocity (/min), and effective velocity \\
+$\Lambda_i^{(0)},\ \Lambda_i^{(1)},\ \Lambda_i^*$ & Layer-1 linear, gate-augmented, and final projected occupancy \\
+$\lambda_i,\ S_i$ & Gate check-in arrival rate (/min) and scheduled session surge \\
+$f_{i \to j}(M)$ & Mass-conserving crowd flow transfer of mass $M$ along edge $(i,j)$ \\
+$q_{i,\mathrm{crit}},\ q_{i,\mathrm{leak}}$ & Critical excess load above $\theta_{i,\mathrm{crit}}C_i$ and busy-zone leakage load \\
+$r_{i,\mathrm{cur}},\ r_{i,\mathrm{proj}}$ & Current ($L_i/C_i$) and projected ($\Lambda_i^*/C_i$) occupancy ratios \\
+$\mathcal{R}_i,\ \mathrm{ETA}_i$ & Discrete zone risk tier and estimated time-to-warning breach (min) \\
+$\phi(a_i),\ \kappa_i$ & Telemetry freshness factor at age $a_i$ and forecast confidence $[0.15,1]$ \\
+\bottomrule
+\end{tabularx}
+\end{table}
 
 \subsection{Stage 1: Automatic Spatial Topology Graph Construction}
 \label{sec:stage1}
-Let $\mathcal{Z} = \{1, 2, \dots, N\}$ denote the set of monitored zones. Each zone $i \in \mathcal{Z}$ resides on floor level $\ell_i \in \mathbb{Z}^+$ and is bounded on the normalized 2D canvas $[0, 1]^2$ by:
+Let $\mathcal{Z} = \{1, 2, \dots, N\}$ denote the set of monitored zones. Each zone $i \in \mathcal{Z}$ resides on floor level $\ell_i \in \mathbb{Z}^+$ and is bounded on the normalized 2D floorplan canvas $[0, 1]^2$ by the axis-aligned rectangle:
 \begin{equation}
-R_i = [x_{i,\min},\, x_{i,\max}] \times [y_{i,\min},\, y_{i,\max}].
+B_i = [x_{i,\min},\, x_{i,\max}] \times [y_{i,\min},\, y_{i,\max}].
 \label{eq:rect}
 \end{equation}
-For any pair $(i, j)$ on the same floor ($\ell_i = \ell_j$), the axial overlaps $o_x$ and $o_y$ are given by:
+For any pair $(i, j)$ on the same floor ($\ell_i = \ell_j$), the axial projections $o_x$ and $o_y$ are given by:
 \begin{equation}
 \begin{aligned}
 o_x(i, j) &= \min(x_{i,\max}, x_{j,\max}) - \max(x_{i,\min}, x_{j,\min}), \\
@@ -315,17 +347,16 @@ o_y(i, j) &= \min(y_{i,\max}, y_{j,\max}) - \max(y_{i,\min}, y_{j,\min}).
 \end{aligned}
 \label{eq:overlap}
 \end{equation}
-With corridor adjacency tolerance $\epsilon_{\mathrm{adj}} = 0.02$, the unnormalized shared-border conductance $\tilde{w}_{ij}$ is defined as:
+Let $o_{\min} = \min(o_x, o_y)$ and $o_{\max} = \max(o_x, o_y)$. With corridor adjacency tolerance $\epsilon_{\mathrm{adj}} = 0.02$, the unnormalized shared-border conductance $\tilde{w}_{ij}$ is:
 \begin{equation}
 \tilde{w}_{ij} = \begin{cases} 
-\epsilon_{\mathrm{adj}}, & \text{if } \min(o_x, o_y) \ge -\epsilon_{\mathrm{adj}} \\
-& \quad \text{and } \min(o_x, o_y) < 0, \\[4pt]
-\max(o_x, o_y, \epsilon_{\mathrm{adj}}), & \text{if } o_x \ge 0 \text{ and } o_y \ge 0, \\[4pt]
+\epsilon_{\mathrm{adj}}, & \text{if } -\epsilon_{\mathrm{adj}} \le o_{\min} < 0, \\
+\max(o_{\max}, \epsilon_{\mathrm{adj}}), & \text{if } o_{\min} \ge 0, \\
 0, & \text{otherwise.}
 \end{cases}
 \label{eq:conductance}
 \end{equation}
-Cross-level vertical connectors inject explicit links with $\tilde{w}_{ij} = 0.10$. Conductances are row-normalized per source zone (Fig.~\ref{fig:spatial_graph}):
+Cross-level vertical connectors (stairwells, escalators, and elevators) inject explicit edges with $\tilde{w}_{ij} = 0.10$. Conductances are row-normalized across the neighbor set $\mathcal{N}(i)$ (Fig.~\ref{fig:spatial_graph}):
 \begin{equation}
 w_{ij} = \frac{\tilde{w}_{ij}}{\sum_{k \in \mathcal{N}(i)} \tilde{w}_{ik}}, \quad \forall j \in \mathcal{N}(i).
 \label{eq:row_norm}
@@ -339,14 +370,14 @@ w_{ij} = \frac{\tilde{w}_{ij}}{\sum_{k \in \mathcal{N}(i)} \tilde{w}_{ik}}, \qua
 \resizebox{\columnwidth}{!}{%
 \begin{tikzpicture}[font=\sffamily\scriptsize,
   zone/.style={draw=black, line width=0.5pt, align=center, inner sep=1pt},
-  gnode/.style={circle, draw=black, line width=0.5pt, minimum size=0.85cm, inner sep=0pt, align=center},
-  arr/.style={-{Stealth[length=1.8mm,width=1.4mm]}, line width=0.6pt}]
+  gnode/.style={circle, draw=black, line width=0.5pt, minimum size=0.82cm, inner sep=0pt, align=center},
+  arr/.style={-{Stealth[length=1.6mm,width=1.2mm]}, line width=0.55pt}]
 % (a) floorplan
 \draw[zone, fill=black!45] (0,1)   rectangle (1.6,2.4) node[pos=0.5]{Main Hall\\$z_1$\\95\%};
 \draw[zone, fill=black!25] (1.6,1) rectangle (2.7,2.4) node[pos=0.5]{Foyer\\$z_2$\\45\%};
 \draw[zone, fill=black!10] (2.7,1) rectangle (3.8,2.4) node[pos=0.5]{Expo A\\$z_3$\\27\%};
 \draw[zone, fill=white]    (1.6,-0.2) rectangle (2.7,1) node[pos=0.5]{Gate\\$z_4$};
-\node at (1.9,-0.65) {(a) Floorplan $[0,1]^2$};
+\node at (1.9,-0.6) {(a) Floorplan bounds $B_i \subset [0,1]^2$};
 % arrow
 \draw[arr, line width=1pt] (3.95,1.7) -- (4.3,1.7);
 % (b) graph
@@ -357,26 +388,26 @@ w_{ij} = \frac{\tilde{w}_{ij}}{\sum_{k \in \mathcal{N}(i)} \tilde{w}_{ik}}, \qua
 \draw[arr] (z1) -- node[above, inner sep=2pt]{hop 1} (z2);
 \draw[arr] (z2) -- node[above, inner sep=2pt]{hop 2} (z3);
 \draw[arr] (z4) -- node[right, inner sep=2pt]{$\lambda_4 H$} (z2);
-\node at (6.5,-0.65) {(b) Topology graph $\mathcal{G}$};
+\node at (6.5,-0.6) {(b) Topology graph $\mathcal{G}$};
 \end{tikzpicture}%
 }
-\caption{Automatic construction of the zone graph. (a)~Normalized axis-aligned zone bounds (fill $=$ current occupancy; $C_1{=}200$, $C_2{=}100$, $C_3{=}120$, $C_4{=}150$). (b)~Weighted graph $\mathcal{G}$ obtained from shared borders via (\ref{eq:overlap})--(\ref{eq:row_norm}), carrying two-hop spillover and gate inflow.}
+\caption{Automatic construction of the zone graph. (a)~Normalized axis-aligned zone bounds $B_i$ (fill $=$ current occupancy; $C_1{=}200$, $C_2{=}100$, $C_3{=}120$, $C_4{=}150$). (b)~Weighted graph $\mathcal{G}$ obtained from shared borders via (\ref{eq:overlap})--(\ref{eq:row_norm}), carrying two-hop spillover and gate inflow.}
 \label{fig:spatial_graph}
 \end{figure}
 
 \subsection{Stage 2: Irregular-Interval Holt Linear Trend Smoothing}
-For each zone $i$, the predictor ingests the rolling 30~min snapshot series $\{(t_{i,1}, y_{i,1}), \dots, (t_{i,m}, y_{i,m})\}$. Initializing $L_{i,1} = y_{i,1}$ and $T_{i,1} = 0$, for $k = 2, \dots, m$ with elapsed step $\Delta t_k = \max((t_{i,k} - t_{i,k-1})/60, 10^{-3})$~min, the irregular-interval Holt double exponential update \cite{holt2004} is:
+For each zone $i$, the predictor ingests the rolling 30~min snapshot series $\{(t_{i,1}, y_{i,1}), \dots, (t_{i,m}, y_{i,m})\}$. Initializing level $L_{i,1} = y_{i,1}$ and velocity $v_{i,1} = 0$, for $k = 2, \dots, m$ with elapsed step $\Delta t_k = \max((t_{i,k} - t_{i,k-1})/60, 10^{-3})$~min, the irregular-interval Holt double exponential update \cite{holt2004} is:
 \begin{equation}
 \begin{aligned}
-\hat{y}_{i,k} &= L_{i,k-1} + T_{i,k-1} \Delta t_k, \\
+\hat{y}_{i,k} &= L_{i,k-1} + v_{i,k-1} \Delta t_k, \\
 L_{i,k} &= \alpha y_{i,k} + (1 - \alpha)\hat{y}_{i,k}, \\
-T_{i,k} &= \beta \left(\frac{L_{i,k} - L_{i,k-1}}{\Delta t_k}\right) + (1 - \beta)T_{i,k-1},
+v_{i,k} &= \beta \left(\frac{L_{i,k} - L_{i,k-1}}{\Delta t_k}\right) + (1 - \beta)v_{i,k-1},
 \end{aligned}
 \label{eq:holt}
 \end{equation}
-with $\alpha = 0.5$ and $\beta = 0.3$. Across horizon $H$, the isolated Layer~1 linear projection is:
+with $\alpha = 0.5$ and $\beta = 0.3$. Writing $L_i = L_{i,m}$ and $v_i = v_{i,m}$, the isolated Layer~1 linear projection across horizon $H$ is:
 \begin{equation}
-\Lambda_i^{(0)}(t + H) = \max(L_i + T_i H,\, 0).
+\Lambda_i^{(0)}(t + H) = \max(L_i + v_i H,\, 0).
 \label{eq:l1_proj}
 \end{equation}
 
@@ -386,15 +417,15 @@ Adding gate check-in arrivals $\lambda_i$ (check-ins/min) yields:
 \Lambda_i^{(1)} = \Lambda_i^{(0)}(t + H) + \lambda_i H.
 \label{eq:gate_inflow}
 \end{equation}
-When crowd mass $M > 0$ disperses from source zone $i$ into $\mathcal{N}(i)$, it is split proportionally to edge weight times destination free capacity headroom $\max(C_j - \Lambda_j, 0)$:
+When crowd mass $M > 0$ disperses from source zone $i$ into $\mathcal{N}(i)$, the directed flow transfer $f_{i \to j}(M)$ is split proportionally to edge conductance times destination free capacity headroom $\max(C_j - \Lambda_j, 0)$:
 \begin{equation}
 \begin{aligned}
 s_{ij} &= w_{ij}\big(\max(C_j - \Lambda_j,\, 0) + \varepsilon_0\big), \\
-\Delta_{i \to j}(M) &= M \cdot \frac{s_{ij}}{\sum_{k \in \mathcal{N}(i)} s_{ik}},
+f_{i \to j}(M) &= M \cdot \frac{s_{ij}}{\sum_{k \in \mathcal{N}(i)} s_{ik}},
 \end{aligned}
 \label{eq:distribute}
 \end{equation}
-where $\varepsilon_0 = 10^{-6}$. Because $\sum_{j \in \mathcal{N}(i)} \Delta_{i \to j}(M) = M$, total pedestrian mass is strictly conserved across all internal transfers:
+where $\varepsilon_0 = 10^{-6}$. Because $\sum_{j \in \mathcal{N}(i)} f_{i \to j}(M) = M$, total pedestrian mass is strictly conserved across all internal transfers:
 \begin{equation}
 \sum_{i \in \mathcal{Z}} \Lambda_i^{\mathrm{after}} = \sum_{i \in \mathcal{Z}} \Lambda_i^{\mathrm{before}}.
 \label{eq:mass_conservation}
@@ -406,50 +437,48 @@ If an active session in zone $z_s$ concludes within $[t_{\mathrm{now}}, t_{\math
 M_{\mathrm{out}}(z_s) = \gamma_{\mathrm{disp}} \cdot \min\!\big(\Lambda_{z_s}^{(1)},\, L_{z_s}\big).
 \label{eq:session_disp}
 \end{equation}
-Conversely, if a session starts within $H$, $z_s$ pulls up to $60\%$ of its remaining headroom from adjacent zones ($\gamma_{\mathrm{pull}} = 0.50$).
+Conversely, if a session starts within $H$, $z_s$ draws up to $60\%$ of its remaining headroom from adjacent zones ($\gamma_{\mathrm{pull}} = 0.50$).
 
 \subsubsection{Multi-Hop Hydraulic Spillover}
-Across $K=2$ hops, zones are visited in descending order of load $\Lambda_i$. Excess load above critical capacity $\theta_{i,\mathrm{crit}} C_i$ (default $0.90 C_i$), denoted $E_{i,\mathrm{crit}}$, plus a busy-zone leakage fraction $\eta_{\mathrm{leak}} = 0.15$ of positive trend growth when $\Lambda_i / C_i \ge \rho_{\mathrm{leak}} = 0.70$ at hop $h=0$, denoted $E_{i,\mathrm{leak}}(h)$, spills into $\mathcal{N}(i)$:
-\begin{equation}
-\begin{aligned}
-E_{i,\mathrm{crit}} &= \max\!\big(\Lambda_i - \theta_{i,\mathrm{crit}} C_i,\, 0\big), \\
-E_{i,\mathrm{leak}}(h) &= \mathbb{I}(h=0)\,\mathbb{I}\!\left(\frac{\Lambda_i}{C_i} \ge \rho_{\mathrm{leak}}\right)\eta_{\mathrm{leak}}\max(T_i, 0)H, \\
-M_{\mathrm{spill}}(i, h) &= \min\!\big(\Lambda_i,\; E_{i,\mathrm{crit}} + E_{i,\mathrm{leak}}(h)\big).
-\end{aligned}
-\label{eq:spill}
-\end{equation}
+Across $K=2$ hops, zones are visited in descending order of load $\Lambda_i$. Excess load above critical capacity $\theta_{i,\mathrm{crit}} C_i$ (default $0.90 C_i$), denoted $q_{i,\mathrm{crit}}$, plus a busy-zone leakage fraction $\eta_{\mathrm{leak}} = 0.15$ of positive velocity growth when $\Lambda_i \ge \rho_{\mathrm{leak}} C_i$ ($\rho_{\mathrm{leak}} = 0.70$) at hop $h=0$, denoted $q_{i,\mathrm{leak}}(h)$, spills into $\mathcal{N}(i)$:
+\begin{IEEEeqnarray}{rCl}
+q_{i,\mathrm{crit}} &=& \max\!\big(\Lambda_i - \theta_{i,\mathrm{crit}} C_i,\, 0\big), \label{eq:spill_crit}\\
+q_{i,\mathrm{leak}}(h) &=& \mathbb{I}(h=0)\,\mathbb{I}(\Lambda_i \ge \rho_{\mathrm{leak}} C_i) \nonumber\\
+&& \times\:\eta_{\mathrm{leak}}\max(v_i, 0)H, \label{eq:spill_leak}\\
+M_{\mathrm{spill}}(i, h) &=& \min\!\big(\Lambda_i,\; q_{i,\mathrm{crit}} + q_{i,\mathrm{leak}}(h)\big). \label{eq:spill}
+\end{IEEEeqnarray}
 
 \subsection{Stage 4: Risk Scoring, ETA, and Confidence Calibration}
-Let $\Lambda_i^*$ denote the final projected load, $r_{i,\mathrm{cur}} = L_i / C_i$, $r_{i,\mathrm{proj}} = \Lambda_i^* / C_i$, and $r_{i,\mathrm{peak}} = \max(r_{i,\mathrm{cur}}, r_{i,\mathrm{proj}})$. With warning threshold $\theta_{i,\mathrm{warn}} = 0.80$, critical threshold $\theta_{i,\mathrm{crit}} = 0.90$, and watch margin $\delta_{\mathrm{watch}} = 0.15$, the discrete risk state $\mathcal{R}_i$ is classified as:
+Let $\Lambda_i^*$ denote the final projected load, $r_{i,\mathrm{cur}} = L_i / C_i$, $r_{i,\mathrm{proj}} = \Lambda_i^* / C_i$, and $r_{i,\mathrm{peak}} = \max(r_{i,\mathrm{cur}}, r_{i,\mathrm{proj}})$. With warning threshold $\theta_{i,\mathrm{warn}} = 0.80$, critical threshold $\theta_{i,\mathrm{crit}} = 0.90$, and watch threshold $\theta_{i,\mathrm{watch}} = \theta_{i,\mathrm{warn}} - 0.15 = 0.65$, the discrete risk tier $\mathcal{R}_i$ is:
 \begin{equation}
 \mathcal{R}_i = \begin{cases}
-\mathrm{critical}, & \text{if } r_{i,\mathrm{peak}} \ge \theta_{i,\mathrm{crit}}, \\
-\mathrm{warning}, & \text{if } \theta_{i,\mathrm{warn}} \le r_{i,\mathrm{peak}} < \theta_{i,\mathrm{crit}}, \\
-\mathrm{watch}, & \text{if } \theta_{i,\mathrm{warn}} - \delta_{\mathrm{watch}} \le r_{i,\mathrm{peak}} < \theta_{i,\mathrm{warn}}, \\
-\mathrm{normal}, & \text{otherwise.}
+\texttt{critical}, & \text{if } r_{i,\mathrm{peak}} \ge \theta_{i,\mathrm{crit}}, \\
+\texttt{warning}, & \text{if } \theta_{i,\mathrm{warn}} \le r_{i,\mathrm{peak}} < \theta_{i,\mathrm{crit}}, \\
+\texttt{watch}, & \text{if } \theta_{i,\mathrm{watch}} \le r_{i,\mathrm{peak}} < \theta_{i,\mathrm{warn}}, \\
+\texttt{normal}, & \text{otherwise.}
 \end{cases}
 \label{eq:risk_tier}
 \end{equation}
-Letting $\Omega_i = \theta_{i,\mathrm{warn}} C_i$ denote the warning threshold headcount and $T_{i,\mathrm{eff}} = (\Lambda_i^* - L_i)/H$ denote the effective trend, $\mathrm{ETA}_i$ is:
+Letting $\Omega_i = \theta_{i,\mathrm{warn}} C_i$ denote the warning headcount and $\bar{v}_i = (\Lambda_i^* - L_i)/H$ denote the net effective velocity over $H$, the estimated time-to-breach $\mathrm{ETA}_i$ is:
 \begin{equation}
 \mathrm{ETA}_i = \begin{cases}
-0.0, & \text{if } L_i \ge \Omega_i, \\[4pt]
-\min\!\left(\dfrac{\Omega_i - L_i}{T_{i,\mathrm{eff}}},\, H\right), & \text{if } L_i < \Omega_i \text{ and } \Lambda_i^* \ge \Omega_i, \\[6pt]
-\mathrm{None}, & \text{otherwise.}
+0.0, & \text{if } L_i \ge \Omega_i, \\[3pt]
+\min\!\left(\dfrac{\Omega_i - L_i}{\bar{v}_i},\, H\right), & \text{if } L_i < \Omega_i \le \Lambda_i^*, \\[5pt]
+\texttt{None}, & \text{otherwise.}
 \end{cases}
 \label{eq:eta}
 \end{equation}
-Data freshness $\phi(a_i)$ for telemetry age $a_i$ (with $\tau_{\mathrm{full}} = 2.0$~min and $\tau_{\mathrm{zero}} = 10.0$~min) and composite confidence $\mathcal{C}_i \in [0.15, 1.0]$ for snapshot count $m_i$ are computed as shown in Fig.~\ref{fig:confidence_decay}:
+Data freshness $\phi(a_i)$ for telemetry age $a_i$ (with $\tau_{\mathrm{full}} = 2.0$~min and $\tau_{\mathrm{zero}} = 10.0$~min) and forecast confidence $\kappa_i \in [0.15, 1.0]$ for sample count $m_i$ are computed as shown in Fig.~\ref{fig:confidence_decay}:
 \begin{equation}
 \phi(a_i) = \begin{cases}
-1.0, & \text{if } a_i \le \tau_{\mathrm{full}}, \\[4pt]
-1.0 - \dfrac{0.7(a_i - \tau_{\mathrm{full}})}{\tau_{\mathrm{zero}} - \tau_{\mathrm{full}}}, & \text{if } \tau_{\mathrm{full}} < a_i < \tau_{\mathrm{zero}}, \\[6pt]
+1.0, & \text{if } a_i \le \tau_{\mathrm{full}}, \\[3pt]
+1.0 - 0.7\,\dfrac{a_i - \tau_{\mathrm{full}}}{\tau_{\mathrm{zero}} - \tau_{\mathrm{full}}}, & \text{if } \tau_{\mathrm{full}} < a_i < \tau_{\mathrm{zero}}, \\[5pt]
 0.3, & \text{otherwise,}
 \end{cases}
 \label{eq:freshness}
 \end{equation}
 \begin{equation}
-\mathcal{C}_i = \phi(a_i) \cdot \left(0.5 + 0.5 \min\!\left(1.0,\, \frac{m_i}{6}\right)\right).
+\kappa_i = \phi(a_i) \cdot \left(0.5 + 0.5 \min\!\left(1.0,\, \frac{m_i}{6}\right)\right).
 \label{eq:confidence}
 \end{equation}
 
@@ -459,14 +488,14 @@ Data freshness $\phi(a_i)$ for telemetry age $a_i$ (with $\tau_{\mathrm{full}} =
 \begin{figure}[!t]
 \centering
 \begin{tikzpicture}
-\begin{axis}[ieee, xlabel={Telemetry age $a_i$ (min)}, ylabel={Confidence $\mathcal{C}_i$},
+\begin{axis}[ieee, xlabel={Telemetry age $a_i$ (min)}, ylabel={Confidence $\kappa_i$},
   xmin=0, xmax=12, ymin=0, ymax=1.05, xtick={0,2,...,12}, ytick={0,0.2,...,1.0},
   legend pos=north east]
-\addplot[black, solid, mark=*, mark size=1.6pt] coordinates {(0,1)(2,1)(4,0.825)(6,0.65)(8,0.475)(10,0.30)(12,0.30)};
+\addplot[black, solid, mark=*, mark size=1.5pt] coordinates {(0,1)(2,1)(4,0.825)(6,0.65)(8,0.475)(10,0.30)(12,0.30)};
 \addlegendentry{$m_i\ge 6$}
-\addplot[black, dashed, mark=square*, mark size=1.5pt, mark options={solid, fill=white}] coordinates {(0,0.75)(2,0.75)(4,0.619)(6,0.488)(8,0.356)(10,0.225)(12,0.225)};
+\addplot[black, dashed, mark=square*, mark size=1.4pt, mark options={solid, fill=white}] coordinates {(0,0.75)(2,0.75)(4,0.619)(6,0.488)(8,0.356)(10,0.225)(12,0.225)};
 \addlegendentry{$m_i=3$}
-\addplot[black, dotted, mark=triangle*, mark size=1.8pt, mark options={solid, fill=black!35}] coordinates {(0,0.583)(2,0.583)(4,0.481)(6,0.379)(8,0.277)(10,0.175)(12,0.175)};
+\addplot[black, dotted, mark=triangle*, mark size=1.7pt, mark options={solid, fill=black!35}] coordinates {(0,0.583)(2,0.583)(4,0.481)(6,0.379)(8,0.277)(10,0.175)(12,0.175)};
 \addlegendentry{$m_i=1$}
 \draw[black!60, dash pattern=on 1pt off 2pt] (axis cs:2,0) -- (axis cs:2,1.05);
 \draw[black!60, dash pattern=on 1pt off 2pt] (axis cs:10,0) -- (axis cs:10,1.05);
@@ -474,13 +503,13 @@ Data freshness $\phi(a_i)$ for telemetry age $a_i$ (with $\tau_{\mathrm{full}} =
 \node[anchor=south west, font=\sffamily\scriptsize, inner sep=1.5pt] at (axis cs:10,0) {$\tau_{\mathrm{zero}}$};
 \end{axis}
 \end{tikzpicture}
-\caption{Prediction confidence $\mathcal{C}_i$ versus telemetry age $a_i$ for different snapshot counts $m_i$ (\ref{eq:freshness})--(\ref{eq:confidence}): full trust up to $\tau_{\mathrm{full}}{=}2$~min, linear decay, and a stale floor beyond $\tau_{\mathrm{zero}}{=}10$~min.}
+\caption{Forecast confidence $\kappa_i$ versus telemetry age $a_i$ for varying snapshot counts $m_i$ (\ref{eq:freshness})--(\ref{eq:confidence}): full weight up to $\tau_{\mathrm{full}}{=}2$~min, linear decay, and a stale floor beyond $\tau_{\mathrm{zero}}{=}10$~min.}
 \label{fig:confidence_decay}
 \end{figure}
 
-\section{Closed-Loop Operational Actuation and Gamified Crowd Diversion}
+\section{Closed-Loop Operational Actuation and Crowd Redirection}
 \label{sec:actuation}
-To translate overcrowding forecasts into physical crowd relief, Spatially closes the operational loop via two parallel actuation channels (Fig.~\ref{fig:closed_loop}): top-down volunteer dispatch and bottom-up gamified attendee redirection.
+To translate overcrowding forecasts into physical crowd relief, Spatially closes the operational loop via two parallel actuation channels (Fig.~\ref{fig:closed_loop}): top-down volunteer dispatch and bottom-up incentivized attendee redirection.
 
 % ============================================================
 %  FIG. 5 -- closed loop
@@ -489,49 +518,49 @@ To translate overcrowding forecasts into physical crowd relief, Spatially closes
 \centering
 \begin{tikzpicture}[font=\sffamily\scriptsize,
   blk/.style={draw=black, line width=0.5pt, rounded corners=1.5pt, fill=white, align=center,
-              inner sep=3pt, text width=3.0cm, minimum height=0.95cm},
-  arr/.style={-{Stealth[length=1.8mm,width=1.4mm]}, line width=0.6pt}]
-\node[blk, fill=black!15, text width=4.2cm] (pred) at (3.4,0) {\textbf{Overcrowding forecast}\\$\mathcal{R}_i\in\{\text{warning, critical}\}$, ETA $\le 15$ min};
-\node[blk, fill=black!6] (t1) at (1.6,-2.0) {\textbf{Staff relevance scoring}\\Rule (\ref{eq:relevance}) + waveform haptics};
-\node[blk, fill=black!6] (t2) at (1.6,-3.7) {\textbf{Tactical staging}\\Gate throttling, atomic shift coverage};
-\node[blk, fill=black!6] (b1) at (5.2,-2.0) {\textbf{AI surge-quest agent}\\Gemini / heuristic, +150 pts};
-\node[blk, fill=black!6] (b2) at (5.2,-3.7) {\textbf{Voluntary redirection}\\Attendees walk to low-density booths};
-\node[blk, fill=black!15, text width=4.2cm] (ven) at (3.4,-5.4) {\textbf{Venue state}\\$\Lambda_i(t)\downarrow,\ \Lambda_{j^\ast}(t)\uparrow$};
-\node[anchor=east, font=\sffamily\bfseries\scriptsize] at (1.5,-1.15) {Top-down loop};
-\node[anchor=west, font=\sffamily\bfseries\scriptsize] at (5.3,-1.15) {Bottom-up loop};
-\draw[arr] (pred.south) -- ++(0,-0.35) -| (t1.north);
-\draw[arr] (pred.south) -- ++(0,-0.35) -| (b1.north);
+              inner sep=2.5pt, text width=2.95cm, minimum height=0.82cm},
+  arr/.style={-{Stealth[length=1.6mm,width=1.2mm]}, line width=0.55pt}]
+\node[blk, fill=black!15, text width=4.2cm] (pred) at (3.4,0) {\textbf{Overcrowding forecast}\\$\mathcal{R}_i\in\{\texttt{warning}, \texttt{critical}\}$, ETA $\le 15$ min};
+\node[blk, fill=black!6] (t1) at (1.6,-1.75) {\textbf{Staff relevance scoring}\\Rule (\ref{eq:relevance}) + tactile haptics};
+\node[blk, fill=black!6] (t2) at (1.6,-3.25) {\textbf{Tactical staging}\\Gate throttling, shift coverage};
+\node[blk, fill=black!6] (b1) at (5.2,-1.75) {\textbf{Diversion task agent}\\LLM / heuristic, +150 pts};
+\node[blk, fill=black!6] (b2) at (5.2,-3.25) {\textbf{Voluntary redirection}\\Attendees move to low-load zones};
+\node[blk, fill=black!15, text width=4.2cm] (ven) at (3.4,-4.75) {\textbf{Venue state}\\$\Lambda_i(t)\downarrow,\ \Lambda_{j^\ast}(t)\uparrow$};
+\node[anchor=east, font=\sffamily\bfseries\scriptsize] at (1.5,-0.98) {Top-down loop};
+\node[anchor=west, font=\sffamily\bfseries\scriptsize] at (5.3,-0.98) {Bottom-up loop};
+\draw[arr] (pred.south) -- ++(0,-0.3) -| (t1.north);
+\draw[arr] (pred.south) -- ++(0,-0.3) -| (b1.north);
 \draw[arr] (t1) -- (t2);
 \draw[arr] (b1) -- (b2);
-\draw[arr] (t2.south) -- ++(0,-0.3) -| (ven.north west |- ven.north) ;
-\draw[arr] (b2.south) -- ++(0,-0.3) -| (ven.north east |- ven.north);
-\draw[arr, dashed] (ven.east) -- ++(1.9,0) coordinate (fb) -- (fb |- pred.east) -- (pred.east);
+\draw[arr] (t2.south) -- ++(0,-0.25) -| (ven.north west |- ven.north);
+\draw[arr] (b2.south) -- ++(0,-0.25) -| (ven.north east |- ven.north);
+\draw[arr, dashed] (ven.east) -- ++(1.85,0) coordinate (fb) -- (fb |- pred.east) -- (pred.east);
 \node[rotate=90, fill=white, inner sep=1.5pt, font=\sffamily\scriptsize] at ($(fb)!0.5!(fb |- pred.east)$) {BLE feedback, 15--30 s};
 \end{tikzpicture}
-\caption{Closed-loop socio-technical actuation. The forecast drives a top-down staff loop (relevance-scored haptic dispatch and staging) and a bottom-up attendee loop (AI surge quests); BLE telemetry closes the loop.}
+\caption{Closed-loop socio-technical actuation. The forecast drives a top-down staff loop (relevance-scored tactile dispatch and staging) and a bottom-up attendee loop (incentivized redirection tasks); BLE telemetry closes the loop.}
 \label{fig:closed_loop}
 \end{figure}
 
 \subsection{Deterministic Volunteer Attention Routing and Haptics}
-The Volunteer Mobile client synthesizes operational broadcasts, incidents, coverage requests, and zone alerts into a unified feed scored deterministically by priority:
+The volunteer client synthesizes operational broadcasts, incidents, coverage requests, and zone alerts into a unified, deduplicated feed scored deterministically by spatial and role relevance:
 \begin{equation}
 \mathrm{Rel}(e, v) = \begin{cases}
-\mathrm{myZone}, & \text{if } e.\mathrm{zone} = v.\mathrm{zone}, \\
-\mathrm{eventWideUrgent}, & \text{if } e.\mathrm{priority} = \mathrm{urgent}, \\
-\mathrm{myTeam}, & \text{if } e.\mathrm{team} = v.\mathrm{team}, \\
-\mathrm{unrelatedNormal}, & \text{otherwise.}
+\texttt{assignedZone}, & \text{if } e.\mathrm{zone} = v.\mathrm{zone}, \\
+\texttt{eventUrgent}, & \text{if } e.\mathrm{priority} = \texttt{urgent}, \\
+\texttt{assignedTeam}, & \text{if } e.\mathrm{team} = v.\mathrm{team}, \\
+\texttt{routine}, & \text{otherwise.}
 \end{cases}
 \label{eq:relevance}
 \end{equation}
-\texttt{HapticAttentionService} drives custom Android vibration waveforms so staff recognize urgent zone surges without looking at screens, while atomic RPCs (\texttt{request\_shift\_coverage}, \texttt{accept\_shift\_coverage}) guarantee continuous station coverage.
+A dedicated tactile notification service drives distinct Android vibration waveforms for each relevance tier so field staff can distinguish urgent zone surges without visual screen inspection, while atomic shift-coverage RPCs prevent unstaffed monitoring gaps during handoffs.
 
-\subsection{Generative AI and Heuristic Surge Diversion Quests}
-To incentivize voluntary attendee dispersal from a congested zone $z_{\mathrm{src}}$ toward a high-headroom zone $z_{\mathrm{dst}}$, the Organizer Platform invokes \texttt{quest\_agent.py}. The agent cascades across Gemini models (\texttt{gemini-3.5-flash-lite} $\to$ \texttt{2.5-flash-lite} $\to$ \texttt{2.0-flash-lite} $\to$ \texttt{1.5-flash}) with a zero-latency deterministic fallback (\texttt{spatially-crowd-diversion-engine}) to mint time-bounded \emph{Flash Surge Diversion Quests} offering $+150$ bonus Passport experience points (XP, abbreviated as pts in the mobile UI) upon QR verification at a target booth in $z_{\mathrm{dst}}$.
+\subsection{Generative AI and Heuristic Surge-Diversion Tasks}
+To incentivize voluntary attendee dispersal from a congested source zone $z_{\mathrm{src}}$ toward a high-headroom destination zone $z_{\mathrm{dst}}$, the command portal invokes the surge-diversion agent. The agent cascades across lightweight large language models (Gemini Flash variants) with a zero-latency deterministic template fallback to issue time-bounded redirection tasks offering $+150$ bonus experience points (XP, displayed as \texttt{pts} in the mobile interface) upon QR verification at a designated booth in $z_{\mathrm{dst}}$.
 
 \section{Experimental Evaluation and Results}
 \label{sec:eval}
 \subsection{Canonical Crowd Pattern Evaluation}
-Fig.~\ref{fig:regime_trajectories} and Table~\ref{tab:regimes} report the predictor's performance across the four canonical crowd regimes (\texttt{ramp}, \texttt{surge}, \texttt{dispersal}, and \texttt{plateau}) on a 4-zone floorplan ($C_0=100, C_1=150, C_2=200, C_3=100$, $\mathcal{C}_i=1.0$). Rolling-origin evaluation confirms that the predictor triggers \texttt{warning} alerts \textbf{8.4~min} ahead of threshold breach under linear ramp ingress and \textbf{5.2~min} ahead of breach following a sudden surge inflection, while routing excess critical overflow into adjacent high-headroom Zone~2.
+Fig.~\ref{fig:regime_trajectories} and Table~\ref{tab:regimes} report the predictor's performance across the four canonical crowd regimes (\texttt{ramp}, \texttt{surge}, \texttt{dispersal}, and \texttt{plateau}) on a 4-zone floorplan ($C_0=100, C_1=150, C_2=200, C_3=100$, $\kappa_i=1.0$). Rolling-origin evaluation confirms that the predictor triggers \texttt{warning} alerts \textbf{8.4~min} ahead of threshold breach under linear ramp ingress and \textbf{5.2~min} ahead of breach following a sudden surge inflection, while routing excess critical overflow into adjacent high-headroom Zone~2.
 
 % ============================================================
 %  FIG. 6 -- crowd regimes
@@ -539,9 +568,9 @@ Fig.~\ref{fig:regime_trajectories} and Table~\ref{tab:regimes} report the predic
 \begin{figure}[!t]
 \centering
 \begin{tikzpicture}
-\begin{axis}[ieee, height=5.4cm, xlabel={Elapsed event time $t$ (min)}, ylabel={Occupancy ratio $r_i(t)$},
+\begin{axis}[ieee, height=4.5cm, xlabel={Elapsed event time $t$ (min)}, ylabel={Occupancy ratio $r_i(t)$},
   xmin=0, xmax=20, ymin=0, ymax=1.05, xtick={0,4,...,20}, ytick={0,0.2,...,1.0},
-  legend columns=2, legend style={at={(0.5,-0.27)}, anchor=north}]
+  legend columns=2, legend style={at={(0.5,-0.29)}, anchor=north}]
 \addplot[black, solid, mark=*, mark size=1.5pt] coordinates {(0,0.25)(4,0.38)(8,0.52)(12,0.65)(16,0.79)(20,0.92)};
 \addlegendentry{Z0: ramp}
 \addplot[black, dashed, mark=square*, mark size=1.4pt, mark options={solid, fill=white}] coordinates {(0,0.35)(4,0.39)(8,0.43)(10,0.45)(14,0.63)(18,0.81)(20,0.90)};
@@ -560,23 +589,23 @@ Fig.~\ref{fig:regime_trajectories} and Table~\ref{tab:regimes} report the predic
 \label{fig:regime_trajectories}
 \end{figure}
 
-\begin{table}[!htbp]
+\begin{table}[!t]
 \centering
 \caption{Prediction Performance Across Crowd Regimes ($H = 15$~min)}
 \label{tab:regimes}
 \footnotesize
 \setlength{\tabcolsep}{3pt}
-\renewcommand{\arraystretch}{1.15}
-\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}llcccc@{}}
+\renewcommand{\arraystretch}{1.1}
+\begin{tabularx}{\columnwidth}{@{}c l c c c C@{}}
 \toprule
-\textbf{Zone} & \textbf{Regime} & \textbf{$r_{\mathrm{cur}}$} & \textbf{$T_i$ (/min)} & \textbf{$r_{\mathrm{proj}}$} & \textbf{Risk (Lead, min)} \\
+\textbf{Zone} & \textbf{Regime} & \textbf{$r_{\mathrm{cur}}$} & \textbf{$v_i$ (/min)} & \textbf{$r_{\mathrm{proj}}$} & \textbf{Risk (Lead, min)} \\
 \midrule
 Zone 0 & \texttt{ramp} & 0.917 & $+3.35$ & 0.900 & \texttt{critical} (\textbf{8.4}) \\
 Zone 1 & \texttt{surge} & 0.899 & $+6.72$ & 0.903 & \texttt{critical} (\textbf{5.2}) \\
 Zone 2 & \texttt{dispersal} & 0.149 & $-9.30$ & 0.785 & \texttt{watch} (Spill) \\
 Zone 3 & \texttt{plateau} & 0.400 & $-0.68$ & 0.297 & \texttt{normal} (\texttt{None}) \\
 \bottomrule
-\end{tabular*}
+\end{tabularx}
 \end{table}
 
 \subsection{Ablation Study: Multi-Zone Keynote Dispersal}
@@ -588,10 +617,10 @@ Fig.~\ref{fig:ablation_chart} and Table~\ref{tab:ablation} evaluate four model c
 \begin{figure}[!t]
 \centering
 \begin{tikzpicture}
-\begin{axis}[ieee, ybar, bar width=7pt, height=5.4cm, ylabel={Projected ratio $r_{\mathrm{proj}}$},
+\begin{axis}[ieee, ybar, bar width=6.5pt, height=4.5cm, ylabel={Projected ratio $r_{\mathrm{proj}}$},
   symbolic x coords={Main Hall, Central Foyer, Expo Zone A}, xtick=data, enlarge x limits=0.2,
   ymin=0, ymax=1.1, ytick={0,0.2,...,1.0}, grid=major,
-  legend columns=2, legend style={at={(0.5,-0.2)}, anchor=north},
+  legend columns=2, legend style={at={(0.5,-0.22)}, anchor=north},
   area legend]
 \addplot[draw=black, fill=white]                  coordinates {(Main Hall,0.95)(Central Foyer,0.45)(Expo Zone A,0.27)};
 \addlegendentry{1. Reactive}
@@ -611,14 +640,14 @@ Fig.~\ref{fig:ablation_chart} and Table~\ref{tab:ablation} evaluate four model c
 \label{fig:ablation_chart}
 \end{figure}
 
-\begin{table}[!htbp]
+\begin{table*}[!t]
 \centering
 \caption{Ablation Study on 3-Zone Keynote Dispersal Cascade}
 \label{tab:ablation}
 \footnotesize
-\setlength{\tabcolsep}{2.5pt}
-\renewcommand{\arraystretch}{1.15}
-\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lcccc@{}}
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.1}
+\begin{tabularx}{\textwidth}{@{}LCCCC@{}}
 \toprule
 \textbf{Configuration} & \textbf{Main Hall} & \textbf{Foyer} & \textbf{ETA (min)} & \textbf{Expo A} \\
 \midrule
@@ -627,11 +656,11 @@ Fig.~\ref{fig:ablation_chart} and Table~\ref{tab:ablation} evaluate four model c
 3. L1+L2 Graph Spill & 0.90 (\texttt{critical}) & 0.77 (\texttt{watch}) & \texttt{None} & 0.31 (\texttt{normal}) \\
 \textbf{4. Full Spatially} & \textbf{0.63 (\texttt{critical})} & \textbf{0.88 (\texttt{warning})} & \textbf{12.3} & \textbf{0.66 (\texttt{watch})} \\
 \bottomrule
-\end{tabular*}
-\end{table}
+\end{tabularx}
+\end{table*}
 
 \subsection{Computational Latency and Subsystem Verification}
-Fig.~\ref{fig:latency_scaling} and Table~\ref{tab:scaling} show empirical single-thread CPU latency across venue sizes from $N=5$ to $N=100$ zones (200-iteration mean), and Table~\ref{tab:verification} summarizes end-to-end platform verification. Inference for a 25-zone venue completes in \textbf{0.751~ms} (1,331~calls/s) and scales to 100 zones in \textbf{4.724~ms}. Furthermore, both mobile applications achieved a 100\% pass rate across 205 automated unit/integration tests (81/81 in \texttt{attendee\_mobile}, 124/124 in \texttt{volunteer\_mobile}) with zero static analysis errors and full physical verification on Nothing Phone A059P hardware.
+Fig.~\ref{fig:latency_scaling} and Table~\ref{tab:scaling} report single-thread CPU latency across venue sizes from $N=5$ to $N=100$ zones (200-iteration mean). Inference for a 25-zone venue completes in \textbf{0.751~ms} (1,331~calls/s) and scales to 100 zones ($|\mathcal{E}|=324$ directed edges) in \textbf{4.724~ms}. End-to-end subsystem verification achieved a 100\% pass rate across 205 automated mobile unit and integration tests (81/81 in the attendee client, 124/124 in the volunteer client), 12 backend test suites, and 46 physical field verification states on Android hardware (Nothing Phone A059P).
 
 % ============================================================
 %  FIG. 8 -- latency scaling
@@ -639,7 +668,7 @@ Fig.~\ref{fig:latency_scaling} and Table~\ref{tab:scaling} show empirical single
 \begin{figure}[!t]
 \centering
 \begin{tikzpicture}
-\begin{axis}[ieee, xmode=log, ymode=log, height=4.8cm,
+\begin{axis}[ieee, xmode=log, ymode=log, height=4.2cm,
   xlabel={Monitored zones $N$}, ylabel={Mean latency per call (ms)},
   xmin=3.5, xmax=150, ymin=0.07, ymax=8,
   xtick={5,10,25,50,100}, xticklabels={5,10,25,50,100},
@@ -647,23 +676,23 @@ Fig.~\ref{fig:latency_scaling} and Table~\ref{tab:scaling} show empirical single
   minor tick num=0, grid=both, minor grid style={black!10, line width=0.2pt},
   nodes near coords, point meta=explicit,
   nodes near coords style={anchor=south east, font=\sffamily\scriptsize, /pgf/number format/fixed, /pgf/number format/precision=3}]
-\addplot[black, solid, mark=*, mark size=1.6pt] coordinates {(5,0.113)[0.113] (10,0.236)[0.236] (25,0.751)[0.751] (50,1.916)[1.916] (100,4.724)[4.724]};
+\addplot[black, solid, mark=*, mark size=1.5pt] coordinates {(5,0.113)[0.113] (10,0.236)[0.236] (25,0.751)[0.751] (50,1.916)[1.916] (100,4.724)[4.724]};
 \end{axis}
 \end{tikzpicture}
 \caption{Single-thread CPU inference latency versus venue size (200-call mean, log--log axes). Growth is mildly super-linear: a 20$\times$ increase in zones yields a 42$\times$ increase in latency.}
 \label{fig:latency_scaling}
 \end{figure}
 
-\begin{table}[!htbp]
+\begin{table}[!t]
 \centering
 \caption{Empirical Inference Latency Scaling Across Zone Counts}
 \label{tab:scaling}
 \footnotesize
 \setlength{\tabcolsep}{4pt}
-\renewcommand{\arraystretch}{1.15}
-\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}cccc@{}}
+\renewcommand{\arraystretch}{1.1}
+\begin{tabularx}{\columnwidth}{@{}CCCC@{}}
 \toprule
-\textbf{Zones ($N$)} & \textbf{Edges ($E$)} & \textbf{Latency (ms)} & \textbf{Throughput (calls/s)} \\
+\textbf{Zones ($N$)} & \textbf{Edges ($|\mathcal{E}|$)} & \textbf{Latency (ms)} & \textbf{Throughput (calls/s)} \\
 \midrule
 5 & 8 & 0.113 & 8,849 \\
 10 & 18 & 0.236 & 4,237 \\
@@ -671,35 +700,53 @@ Fig.~\ref{fig:latency_scaling} and Table~\ref{tab:scaling} show empirical single
 50 & 150 & 1.916 & 522 \\
 100 & 324 & 4.724 & 212 \\
 \bottomrule
-\end{tabular*}
-\end{table}
-
-\begin{table}[!htbp]
-\centering
-\caption{End-to-End Platform Verification Baseline}
-\label{tab:verification}
-\footnotesize
-\setlength{\tabcolsep}{3.5pt}
-\renewcommand{\arraystretch}{1.15}
-\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}llcc@{}}
-\toprule
-\textbf{Subsystem} & \textbf{Platform} & \textbf{Tests} & \textbf{Status} \\
-\midrule
-Attendee App & Flutter / Android & 81 / 81 & 100\% Pass \\
-Volunteer App & Flutter / Android & 124 / 124 & 100\% Pass \\
-Predictor API & Python / FastAPI & 12+ Suites & 100\% Pass \\
-Field Hardware & Nothing A059P & 46 States & Verified \\
-\bottomrule
-\end{tabular*}
+\end{tabularx}
 \end{table}
 
 \section{Discussion and Limitations}
 \label{sec:discussion}
-Spatially addresses two key threats to validity in mobile crowd sensing: (1) imperfect BLE penetration is mitigated by fusing QR turnstile check-in rates ($\lambda_i$) at entrance zones and supporting manual calibration snapshots; and (2) temporary scanner absence in a zone is guarded by both atomic shift coverage locks and the freshness decay factor $\phi(a_i)$ in (\ref{eq:freshness})--(\ref{eq:confidence}), which lowers confidence $\mathcal{C}_i$ to $0.3$ rather than raising false alarms on stale data. A geometric limitation of Section~\ref{sec:stage1} is the axis-aligned bounding box approximation, which can be overridden via explicit \texttt{extra\_links} when non-porous walls separate touching rectangles.
+Several methodological and operational limitations bound the findings of this study:
+
+\emph{1) Synthetic Evaluation Traces and Single-Venue Topology:} While the BLE scanner, offline SQLite outbox, and tactile routing subsystems were verified on physical Android hardware, the canonical regime and keynote dispersal ablation benchmarks rely on calibrated synthetic crowd trajectories over a single multi-zone convention topology. Deploying overhead optical ground-truth counters across diverse architectural typologies (such as multi-tier stadiums and outdoor festival grounds) is required to quantify forecasting error distributions under real-world sensor noise.
+
+\emph{2) Unproven Behavioral Compliance Assumption:} The bottom-up actuation loop assumes that issuing $+150$~pt redirection tasks induces a non-trivial fraction of attendees to vacate congested zones. However, empirical compliance elasticity under real crowd stress, attendee fatigue, or high-interest keynote transitions has not yet been measured in live human-subject trials; consequently, gamified redirection should be treated as an advisory supplement to physical gate throttling and staff staging rather than a standalone safety control.
+
+\emph{3) Residual Physical and Link-Layer Privacy Boundaries:} Rotating the 48-bit SHA-256 payload $b_t$ every $\tau_{\mathrm{rot}} \in [5, 15]$~min prevents application-layer identity linkage and eliminates persistent PII in cloud storage. Nevertheless, if the underlying mobile operating system rotates its BLE link-layer random MAC address on a schedule asynchronous with $\tau_{\mathrm{rot}}$, a passive adversary operating collocated packet sniffers could correlate consecutive epochs across the non-rotating window, or apply physical-layer radio-frequency fingerprinting.
+
+\emph{4) Sensing Coverage and Geometric Approximation:} Incomplete attendee app penetration and temporary volunteer absence can bias raw BLE headcounts; Spatially partially mitigates these gaps by fusing QR turnstile check-in rates ($\lambda_i$) at entrance zones and decaying forecast confidence $\kappa_i$ via (\ref{eq:freshness})--(\ref{eq:confidence}) to $0.3$ during scanner blackouts rather than extrapolating stale trends. Finally, the axis-aligned bounding rectangle model ($B_i \subset [0,1]^2$) in Section~\ref{sec:stage1} overestimates conductance when non-porous walls separate adjacent zones, requiring manual edge overrides in the venue editor.
 
 \section{Conclusion and Future Work}
 \label{sec:conclusion}
-This paper presented \textbf{Spatially}, an end-to-end, privacy-preserving event operations and crowd intelligence platform. By uniting rotating 6-byte SHA-256 BLE telemetry, offline-resilient SQLite outboxes, a sub-millisecond macroscopic graph flow predictor, and generative AI \emph{Flash Surge Diversion Quests}, Spatially shifts physical venue management from reactive observation to proactive, closed-loop socio-technical coordination. Future work will explore online recursive calibration of zone smoothing parameters $(\alpha, \beta)$ and empirical quantification of attendee compliance elasticity under variable gamified reward multipliers.
+This paper presented \textbf{Spatially}, an end-to-end, privacy-preserving event operations and crowd intelligence platform. By uniting rotating 6-byte SHA-256 BLE telemetry, offline-resilient local relational outboxes, a sub-millisecond macroscopic graph flow predictor, and closed-loop volunteer haptics with incentivized redirection tasks, Spatially shifts physical venue management from reactive observation to proactive socio-technical coordination. Future work will investigate online recursive calibration of zone smoothing parameters $(\alpha, \beta)$ against optical ground truth and controlled field studies measuring attendee compliance elasticity across variable incentive rewards.
+
+\appendix[Implementation Mapping]
+\label{app:impl}
+To support reproducibility while keeping the main text independent of codebase identifiers, Table~\ref{tab:impl_map} maps the conceptual subsystems described in Sections~\ref{sec:arch}--\ref{sec:actuation} to their concrete modules, classes, and relational schema objects in the project repository.
+
+\begin{table}[!h]
+\centering
+\caption{Mapping of Conceptual Subsystems to Repository Artifacts}
+\label{tab:impl_map}
+\footnotesize
+\setlength{\tabcolsep}{2.5pt}
+\renewcommand{\arraystretch}{1.08}
+\begin{tabularx}{\columnwidth}{@{}>{\raggedright\arraybackslash}p{0.32\columnwidth}L@{}}
+\toprule
+\textbf{Conceptual Component} & \textbf{Repository Module / Schema Identifier} \\
+\midrule
+Attendee / Volunteer clients & \texttt{attendee\_mobile/}, \texttt{volunteer\_mobile/} \\
+Organizer web command & \texttt{client/} (React 19, Vite, SVG editor) \\
+BLE scanner \& sticky set & \texttt{BleScannerService}, \texttt{\_confirmedSpatiallyIds} \\
+Local SQLite v7 outbox & \texttt{spatially\_queue.db} (\texttt{observation\_queue}) \\
+Tactile attention router & \texttt{HapticAttentionService} \\
+Spatial topology tables & \texttt{venues}, \texttt{venue\_levels}, \texttt{venue\_zones}, \texttt{event\_zones} \\
+Telemetry \& state tables & \texttt{volunteer\_counts}, \texttt{crowd\_zone\_snapshots}, \texttt{tickets} \\
+Ops \& shift RPCs & \texttt{check\_in\_ticket}, \texttt{request/accept\_shift\_coverage} \\
+Macroscopic predictor & \path{server/app/services/crowd_prediction.py} \\
+Surge-diversion agent & \path{server/app/services/quest_agent.py} \\
+\bottomrule
+\end{tabularx}
+\end{table}
 
 \begin{thebibliography}{00}
 \bibitem{hoogendoorn2004} S. P. Hoogendoorn and P. H. L. Bovy, ``Pedestrian route-choice and activity scheduling theory and models,'' \emph{Transp. Res. Part B: Methodol.}, vol. 38, no. 2, pp. 169--190, Feb. 2004.

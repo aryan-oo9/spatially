@@ -262,8 +262,28 @@ async def get_crowd_data(event_id: str, current_user: dict = Depends(get_current
 
     timeline.sort(key=lambda x: x["hour"])
 
+    # Active proxy attendance breakdown (ADR 0002)
+    active_proxies_count = 0
+    try:
+        proxies_res = (
+            supabase.table("proxy_attendance_sessions")
+            .select("id")
+            .eq("event_id", event_id)
+            .eq("status", "active")
+            .execute()
+        )
+        active_proxies_count = len(proxies_res.data or [])
+    except Exception:
+        active_proxies_count = 0
+
+    total_devices = sum(z["active_count"] for z in zone_data.values())
+    total_attendance = total_devices + active_proxies_count
+
     return {
         "zone_data": zone_data,
         "timeline": timeline,
         "raw_counts": counts.data,
+        "total_attendance": total_attendance,
+        "active_devices": total_devices,
+        "carried_proxies": active_proxies_count,
     }

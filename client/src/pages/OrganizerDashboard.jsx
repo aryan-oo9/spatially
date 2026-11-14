@@ -373,6 +373,11 @@ export default function OrganizerDashboard() {
                 <div className="stat-label">Checked-In Attendees</div>
                 <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "4px" }}>
                   {registeredTickets} registered &middot; {checkinRate}% turnout
+                  {healthData.crowd_breakdown?.carried_proxies > 0 && (
+                    <span style={{ display: "block", color: "#A78BFA", marginTop: "2px" }}>
+                      👥 {healthData.crowd_breakdown.active_devices} Active Devices + {healthData.crowd_breakdown.carried_proxies} Carried Proxies
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

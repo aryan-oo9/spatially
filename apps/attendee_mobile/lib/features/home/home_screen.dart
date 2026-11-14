@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:battery_plus/battery_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../design_system/design_system.dart';
@@ -32,6 +33,14 @@ import '../event_content/models/spatially_session.dart';
 import '../event_content/sessions/session_detail_screen.dart';
 import '../wallet/data/wallet_service.dart';
 import '../wallet/screens/wallet_screen.dart';
+import '../proxy/data/proxy_attendance_repository.dart';
+import '../proxy/data/supabase_proxy_attendance_repository_impl.dart';
+import '../proxy/models/proxy_attendance_model.dart';
+import '../proxy/widgets/proxy_battery_warning_card.dart';
+import '../proxy/widgets/proxy_request_bottom_sheet.dart';
+import '../proxy/widgets/proxy_host_request_dialog.dart';
+import '../proxy/widgets/proxy_carrying_badge.dart';
+import '../proxy/widgets/proxy_reclaim_banner.dart';
 
 /// Spatially Attendee — Home Screen (Phase 3A & Phase 7C).
 ///
@@ -98,10 +107,33 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Live or nearest upcoming session for the primary event.
   SpatiallySession? _activeSession;
 
+  // --- Proxy Attendance & Battery Telemetry ---
+  final ProxyAttendanceRepository _proxyRepo = SupabaseProxyAttendanceRepositoryImpl();
+  StreamSubscription? _proxySessionsSub;
+  StreamSubscription? _incomingProxyAlertSub;
+  StreamSubscription<BatteryState>? _batteryStateSub;
+  final Battery _battery = Battery();
+  int _batteryLevel = 100;
+  BatteryState _batteryState = BatteryState.unknown;
+  bool _dismissedBatteryWarning = false;
+  ProxyAttendanceSession? _activeRequesterSession;
+  List<ProxyAttendanceSession> _activeHostSessions = [];
+
+  bool get _shouldShowBatteryWarning {
+    if (_dismissedBatteryWarning) return false;
+    if (_primaryEvent == null || _primaryTicket == null) return false;
+    final isCheckedIn = _primaryTicket?['status'] == 'checked_in';
+    if (!isCheckedIn) return false;
+    if (_batteryState == BatteryState.charging) return false;
+    if (_activeRequesterSession != null) return false;
+    return _batteryLevel <= 15;
+  }
+
   @override
   void initState() {
     super.initState();
     _locationRepo = widget.locationRepository ?? SupabaseAttendeeLocationRepositoryImpl();
+    _initBatteryMonitoring();
     _loadData();
     WalletService.instance.init();
     WalletService.instance.addListener(_onWalletChanged);
@@ -127,13 +159,79 @@ class _HomeScreenState extends State<HomeScreen> {
       onResume: () {
         if (mounted) {
           _loadData();
+          _refreshBatteryLevel();
         }
       },
     );
   }
 
+  void _initBatteryMonitoring() {
+    _refreshBatteryLevel();
+    _batteryStateSub = _battery.onBatteryStateChanged.listen((state) {
+      if (mounted) {
+        setState(() {
+          _batteryState = state;
+        });
+        _refreshBatteryLevel();
+      }
+    });
+  }
+
+  Future<void> _refreshBatteryLevel() async {
+    try {
+      final lvl = await _battery.batteryLevel;
+      if (mounted) {
+        setState(() {
+          _batteryLevel = lvl;
+        });
+      }
+    } catch (_) {}
+  }
+
+  void _subscribeProxyAttendance(String eventId) {
+    _proxySessionsSub?.cancel();
+    _proxySessionsSub = _proxyRepo.observeSessions(eventId).listen((sessions) {
+      if (!mounted) return;
+      final userId = AuthService().currentUserId;
+      final activeReq = sessions.where(
+        (s) => s.eventId == eventId && s.requesterUserId == userId && s.isActive,
+      );
+      final activeHosts = sessions.where(
+        (s) => s.eventId == eventId && s.hostUserId == userId && s.isActive,
+      ).toList();
+
+      setState(() {
+        _activeRequesterSession = activeReq.isNotEmpty ? activeReq.first : null;
+        _activeHostSessions = activeHosts;
+      });
+    });
+
+    _incomingProxyAlertSub?.cancel();
+    final repo = _proxyRepo;
+    if (repo is SupabaseProxyAttendanceRepositoryImpl) {
+      _incomingProxyAlertSub = repo.incomingRequestAlerts.listen((session) {
+        if (mounted) {
+          ProxyHostRequestDialog.show(
+            context: context,
+            session: session,
+            repository: _proxyRepo,
+            onHandled: () {
+              if (mounted) {
+                _subscribeProxyAttendance(eventId);
+              }
+            },
+          );
+        }
+      });
+    }
+  }
+
   @override
   void dispose() {
+    _proxySessionsSub?.cancel();
+    _incomingProxyAlertSub?.cancel();
+    _batteryStateSub?.cancel();
+    _proxyRepo.dispose();
     _locationSub?.cancel();
     if (widget.locationRepository == null) {
       _locationRepo.dispose();
@@ -324,6 +422,8 @@ class _HomeScreenState extends State<HomeScreen> {
             final sessions = await _contentRepo.getSessions(eventId);
             activeSession = _findActiveOrNextSession(sessions);
           } catch (_) {}
+
+          _subscribeProxyAttendance(eventId);
         }
       }
 
@@ -378,6 +478,7 @@ class _HomeScreenState extends State<HomeScreen> {
             final sessions = await _contentRepo.getSessions(eventId);
             activeSession = _findActiveOrNextSession(sessions);
           } catch (_) {}
+          _subscribeProxyAttendance(eventId);
         }
 
         setState(() {
@@ -540,6 +641,58 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             },
           ),
+
+          // --- Proxy Attendance: Active Delegation Reclaim Banner ---
+          if (_activeRequesterSession != null)
+            ProxyReclaimBanner(
+              activeSession: _activeRequesterSession!,
+              repository: _proxyRepo,
+              onReclaimed: () {
+                if (_primaryEvent != null) {
+                  final eventId = _primaryEvent!['id']?.toString();
+                  if (eventId != null) _subscribeProxyAttendance(eventId);
+                }
+              },
+            ),
+
+          // --- Proxy Attendance: Host Active Carrying Badge ---
+          if (_activeHostSessions.isNotEmpty)
+            ProxyCarryingBadge(
+              activeSessions: _activeHostSessions,
+              repository: _proxyRepo,
+              onSessionRevoked: () {
+                if (_primaryEvent != null) {
+                  final eventId = _primaryEvent!['id']?.toString();
+                  if (eventId != null) _subscribeProxyAttendance(eventId);
+                }
+              },
+            ),
+
+          // --- Proactive Battery Warning Card (<= 15%) ---
+          if (_shouldShowBatteryWarning)
+            ProxyBatteryWarningCard(
+              batteryLevel: _batteryLevel,
+              onDelegatePressed: () {
+                if (_primaryEvent != null) {
+                  final eventId = _primaryEvent!['id']?.toString() ?? '';
+                  final eventName = _primaryEvent!['name']?.toString() ?? 'Event';
+                  ProxyRequestBottomSheet.show(
+                    context: context,
+                    eventId: eventId,
+                    eventName: eventName,
+                    repository: _proxyRepo,
+                    onRequestSubmitted: () {
+                      if (mounted) setState(() {});
+                    },
+                  );
+                }
+              },
+              onDismiss: () {
+                setState(() {
+                  _dismissedBatteryWarning = true;
+                });
+              },
+            ),
 
           // --- Primary Event Hero or No Events state ---
           if (_primaryEvent != null)
