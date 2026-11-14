@@ -22,7 +22,9 @@ import {
   LuX,
   LuGlobe,
   LuBot,
-  LuCheck
+  LuCheck,
+  LuSend,
+  LuRadio
 } from "react-icons/lu";
 
 const SPONSOR_TIERS = [
@@ -120,6 +122,13 @@ export default function OrganizerContent() {
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [editingActivity, setEditingActivity] = useState(null);
   const [activityForm, setActivityForm] = useState({ title: "", description: "", points_reward: 50, zone_id: "", activity_type: "scavenger" });
+
+  // Broadcast Quest Modal States
+  const [isBroadcastModalOpen, setIsBroadcastModalOpen] = useState(false);
+  const [broadcastingQuest, setBroadcastingQuest] = useState(null);
+  const [broadcastTarget, setBroadcastTarget] = useState("all"); // "all" | "zone"
+  const [broadcastZoneId, setBroadcastZoneId] = useState("");
+  const [broadcastSending, setBroadcastSending] = useState(false);
 
   useEffect(() => {
     api.get("/api/events/organizer/mine")
@@ -406,6 +415,34 @@ export default function OrganizerContent() {
       fetchContent();
     } catch (err) {
       toast(err.message, "error");
+    }
+  };
+
+  const handleOpenBroadcastModal = (quest) => {
+    setBroadcastingQuest(quest);
+    setBroadcastTarget(quest.zone_id ? "zone" : "all");
+    setBroadcastZoneId(quest.zone_id || (zones[0]?.id || ""));
+    setIsBroadcastModalOpen(true);
+  };
+
+  const handleSendQuestBroadcast = async (e) => {
+    e.preventDefault();
+    if (!broadcastingQuest) return;
+    setBroadcastSending(true);
+    try {
+      const payload = {
+        event_id: selectedEventId,
+        target: broadcastTarget,
+        zone_id: broadcastTarget === "zone" ? broadcastZoneId : null,
+      };
+      const res = await api.post(`/api/organizer/activities/${broadcastingQuest.id}/broadcast`, payload);
+      toast(res.message || "Quest notification broadcast successfully!", "success");
+      setIsBroadcastModalOpen(false);
+      setBroadcastingQuest(null);
+    } catch (err) {
+      toast(err.message, "error");
+    } finally {
+      setBroadcastSending(false);
     }
   };
 
@@ -984,7 +1021,15 @@ export default function OrganizerContent() {
                           </span>
                         </td>
                         <td>
-                          <div style={{ display: "flex", gap: "6px" }}>
+                          <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                            <button 
+                              className="btn btn-sm btn-primary" 
+                              onClick={() => handleOpenBroadcastModal(a)}
+                              title="Send / Broadcast this gamified quest to all attendees or a specific zone"
+                              style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "0.78rem", padding: "4px 10px" }}
+                            >
+                              <LuSend size={13} /> Send Quest
+                            </button>
                             <button className="btn btn-ghost btn-sm" onClick={() => { setEditingActivity(a); setActivityForm(a); setIsActivityModalOpen(true); }}><LuPencil size={14} /></button>
                             <button className="btn btn-ghost btn-sm" onClick={() => handleDeleteActivity(a.id)} style={{ color: "var(--error)" }}><LuTrash2 size={14} /></button>
                           </div>
@@ -1614,6 +1659,159 @@ export default function OrganizerContent() {
                 <div className="modal-footer" style={{ padding: "16px 0 0", marginTop: "12px" }}>
                   <button type="button" className="btn btn-ghost" onClick={() => setIsActivityModalOpen(false)}>Cancel</button>
                   <button type="submit" className="btn btn-primary">Save Quest</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BROADCAST QUEST MODAL */}
+      {isBroadcastModalOpen && broadcastingQuest && (
+        <div className="modal-overlay fade-in" onClick={() => setIsBroadcastModalOpen(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: "520px" }}>
+            <div className="modal-header">
+              <h3 style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "1.1rem" }}>
+                <LuSend color="var(--primary)" size={20} /> Send Gamified Quest
+              </h3>
+              <button 
+                className="btn-icon" 
+                onClick={() => setIsBroadcastModalOpen(false)}
+                style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}
+              >
+                <LuX size={20} />
+              </button>
+            </div>
+
+            <div className="modal-body">
+              <form onSubmit={handleSendQuestBroadcast} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                {/* Selected Quest Summary Card */}
+                <div style={{
+                  background: "var(--bg-tertiary)",
+                  border: "1px solid var(--border-default)",
+                  borderRadius: "8px",
+                  padding: "12px 14px",
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                    <div>
+                      <strong style={{ fontSize: "0.95rem", color: "var(--text-primary)" }}>{broadcastingQuest.title}</strong>
+                      <div style={{ fontSize: "0.8rem", color: "var(--text-secondary)", marginTop: "4px" }}>
+                        {broadcastingQuest.description || "Interactive attendee challenge."}
+                      </div>
+                    </div>
+                    <span style={{ 
+                      padding: "3px 8px", 
+                      borderRadius: "6px", 
+                      background: "rgba(245, 158, 11, 0.15)", 
+                      color: "#FBBF24", 
+                      fontWeight: "700",
+                      fontSize: "0.8rem",
+                      whiteSpace: "nowrap"
+                    }}>
+                      +{broadcastingQuest.points_reward || broadcastingQuest.points || 50} pts
+                    </span>
+                  </div>
+                </div>
+
+                {/* Target Audience Selection */}
+                <div className="form-group">
+                  <label className="form-label" style={{ fontWeight: "600" }}>Target Audience</label>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "4px" }}>
+                    <div 
+                      onClick={() => setBroadcastTarget("all")}
+                      style={{
+                        padding: "12px",
+                        borderRadius: "8px",
+                        border: broadcastTarget === "all" ? "2px solid var(--primary)" : "1px solid var(--border-default)",
+                        background: broadcastTarget === "all" ? "rgba(99, 102, 241, 0.1)" : "var(--bg-secondary)",
+                        cursor: "pointer",
+                        transition: "all 0.2s ease"
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: "600", fontSize: "0.9rem" }}>
+                        <input 
+                          type="radio" 
+                          checked={broadcastTarget === "all"} 
+                          onChange={() => setBroadcastTarget("all")} 
+                          style={{ accentColor: "var(--primary)" }}
+                        />
+                        <span>All Attendees</span>
+                      </div>
+                      <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "4px", paddingLeft: "24px" }}>
+                        Sends in-app popup and push alert to everyone at the event.
+                      </div>
+                    </div>
+
+                    <div 
+                      onClick={() => setBroadcastTarget("zone")}
+                      style={{
+                        padding: "12px",
+                        borderRadius: "8px",
+                        border: broadcastTarget === "zone" ? "2px solid var(--primary)" : "1px solid var(--border-default)",
+                        background: broadcastTarget === "zone" ? "rgba(99, 102, 241, 0.1)" : "var(--bg-secondary)",
+                        cursor: "pointer",
+                        transition: "all 0.2s ease"
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: "600", fontSize: "0.9rem" }}>
+                        <input 
+                          type="radio" 
+                          checked={broadcastTarget === "zone"} 
+                          onChange={() => setBroadcastTarget("zone")} 
+                          style={{ accentColor: "var(--primary)" }}
+                        />
+                        <span>Specific Zone</span>
+                      </div>
+                      <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "4px", paddingLeft: "24px" }}>
+                        Only alerts attendees currently localized in that event zone.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Zone Picker if "Specific Zone" is selected */}
+                {broadcastTarget === "zone" && (
+                  <div className="form-group fade-in">
+                    <label className="form-label" style={{ fontWeight: "600" }}>Select Event Zone *</label>
+                    <select 
+                      className="form-select" 
+                      value={broadcastZoneId} 
+                      onChange={e => setBroadcastZoneId(e.target.value)}
+                      required
+                    >
+                      <option value="">-- Choose Target Zone --</option>
+                      {zones.map(z => (
+                        <option key={z.id} value={z.id}>
+                          {z.name} {z.code ? `(${z.code})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <span style={{ fontSize: "0.74rem", color: "var(--text-muted)", marginTop: "4px", display: "block" }}>
+                      Spatially's BLE proximity and zone radar will deliver this alert only to phones detected in this sector.
+                    </span>
+                  </div>
+                )}
+
+                <div className="modal-footer" style={{ padding: "16px 0 0", marginTop: "8px", display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+                  <button type="button" className="btn btn-ghost" onClick={() => setIsBroadcastModalOpen(false)}>
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="btn btn-primary"
+                    disabled={broadcastSending || (broadcastTarget === "zone" && !broadcastZoneId)}
+                    style={{ display: "flex", alignItems: "center", gap: "6px" }}
+                  >
+                    {broadcastSending ? (
+                      <>
+                        <div className="spinner spinner-sm"></div> Sending...
+                      </>
+                    ) : (
+                      <>
+                        <LuSend size={15} /> Send Quest Now
+                      </>
+                    )}
+                  </button>
                 </div>
               </form>
             </div>

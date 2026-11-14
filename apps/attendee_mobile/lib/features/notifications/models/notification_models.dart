@@ -270,10 +270,13 @@ class NotificationAction {
           eventId: eventId,
         );
       case 'activity':
+      case 'activities':
+      case '/activities':
         return NotificationAction(
           type: NotificationActionType.activity,
           targetId: param1,
           eventId: eventId,
+          zoneId: param2,
         );
       case 'map':
         return NotificationAction(

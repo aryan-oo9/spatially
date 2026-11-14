@@ -7,6 +7,7 @@ import '../event_content/data/event_content_repository.dart';
 import '../event_content/sessions/session_detail_screen.dart';
 import '../event_content/booths/booth_detail_screen.dart';
 import '../event_content/activities/activity_detail_screen.dart';
+import '../event_content/activities/activities_screen.dart';
 import '../map/map_screen.dart';
 import '../connect/connect_screen.dart';
 import '../safety/safety_screen.dart';
@@ -90,7 +91,7 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
 
       case NotificationActionType.activity:
         final activityId = action.targetId;
-        if (activityId != null) {
+        if (activityId != null && activityId.isNotEmpty) {
           final activity = await _contentRepo.getActivityById(eventId, activityId);
           if (activity != null && mounted) {
             Navigator.of(context).push(
@@ -103,6 +104,18 @@ class _NotificationCenterScreenState extends State<NotificationCenterScreen> {
             );
             return;
           }
+        }
+        if (mounted) {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => ActivitiesScreen(
+                event: widget.event,
+                eventId: eventId,
+                eventName: widget.event?.name,
+              ),
+            ),
+          );
+          return;
         }
         break;
 

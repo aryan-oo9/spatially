@@ -2258,6 +2258,16 @@ class QuestSaveRequest(BaseModel):
     points_reward: Optional[int] = 100
     zone_id: Optional[str] = None
     is_active: Optional[bool] = True
+    broadcast_target: Optional[str] = None  # "all" | "zone" | None
+    target_zone_id: Optional[str] = None
+
+
+class QuestBroadcastRequest(BaseModel):
+    event_id: str
+    target: str = "all"  # "all" | "zone"
+    zone_id: Optional[str] = None
+    custom_title: Optional[str] = None
+    custom_message: Optional[str] = None
 
 
 @router.post("/ai/generate-quest")
@@ -2303,7 +2313,94 @@ async def ai_save_quest(data: QuestSaveRequest, current_user: dict = Depends(req
         new_act["zone_id"] = data.zone_id
 
     result = supabase.table("activities").insert(new_act).execute()
+    created_act = result.data[0] if result.data else {}
+
+    # Optional auto-broadcast notification on save
+    if data.broadcast_target in ("all", "zone"):
+        try:
+            zone_filter = data.target_zone_id if data.broadcast_target == "zone" else None
+            action_route = f"activity:{created_act.get('id', '')}"
+            if zone_filter:
+                action_route += f":{zone_filter}"
+            
+            notif_row = {
+                "event_id": data.event_id,
+                "target_user_id": None,
+                "title": f"🎯 New Quest: {data.title}",
+                "body": f"Earn +{data.points_reward or 100} Points! {data.description or 'Open the app to complete this quest.'}",
+                "category": "engagement",
+                "action_route": action_route,
+                "is_active": True,
+            }
+            supabase.table("event_notifications").insert(notif_row).execute()
+        except Exception as e:
+            logger.warning(f"Failed to auto-broadcast gamified quest: {e}")
+
     return {"message": "Gamified quest saved successfully", "data": result.data}
+
+
+@router.post("/activities/{activity_id}/broadcast")
+async def broadcast_activity(
+    activity_id: str,
+    data: QuestBroadcastRequest,
+    current_user: dict = Depends(require_organizer)
+):
+    """Broadcast a gamified quest/activity directly to all attendees or attendees in a specific zone."""
+    supabase = get_supabase()
+    verify_event_ownership(supabase, data.event_id, current_user["user_id"])
+
+    # Verify activity exists
+    act_res = supabase.table("activities").select("*").eq("id", activity_id).eq("event_id", data.event_id).execute()
+    if not act_res.data:
+        raise HTTPException(status_code=404, detail="Activity/Quest not found")
+
+    activity = act_res.data[0]
+    title = data.custom_title or f"🎯 Quest Challenge: {activity.get('title', 'Event Quest')}"
+    pts = activity.get('points_reward', 50)
+    body = data.custom_message or f"Earn +{pts} Points! {activity.get('description', 'Complete this challenge in your Gamified Quests.')}"
+
+    zone_suffix = ""
+    zone_label = "all event attendees"
+    if data.target == "zone" and data.zone_id:
+        zone_suffix = f":{data.zone_id}"
+        # Fetch zone name for audit log
+        try:
+            z_res = supabase.table("event_zones").select("name").eq("id", data.zone_id).execute()
+            if z_res.data:
+                zone_label = f"attendees in {z_res.data[0].get('name', 'selected zone')}"
+        except Exception:
+            zone_label = "attendees in selected zone"
+
+    action_route = f"activity:{activity_id}{zone_suffix}"
+
+    notif_row = {
+        "event_id": data.event_id,
+        "target_user_id": None,
+        "title": title,
+        "body": body,
+        "category": "engagement",
+        "action_route": action_route,
+        "is_active": True,
+    }
+
+    notif_res = supabase.table("event_notifications").insert(notif_row).execute()
+
+    # Log in activity logs
+    try:
+        supabase.table("event_activity_logs").insert({
+            "event_id": data.event_id,
+            "action_type": "gamified_quest_broadcast",
+            "description": f"Gamified quest '{activity.get('title')}' sent to {zone_label} (+{pts} pts).",
+            "actor_id": current_user["user_id"]
+        }).execute()
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "message": f"Quest successfully sent to {zone_label}!",
+        "notification": notif_res.data[0] if notif_res.data else None
+    }
 
 
 @router.get("/activities/{event_id}")

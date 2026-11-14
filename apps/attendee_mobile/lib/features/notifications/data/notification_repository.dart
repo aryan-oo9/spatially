@@ -6,6 +6,7 @@ import '../../../services/auth_service.dart';
 import '../../../services/offline_service.dart';
 import '../../../services/app_notification_service.dart';
 import '../../explore/data/event_cache_manager.dart';
+import '../../map/data/supabase_attendee_location_repository_impl.dart';
 import '../models/notification_models.dart';
 
 /// Abstract repository contract for attendee notifications.
@@ -269,6 +270,14 @@ class NotificationRepositoryImpl implements NotificationRepository {
       }
 
       final newItem = NotificationItem.fromMap(newRecord);
+
+      // Check if notification is target-zone scoped (e.g. action_route = activity:<actId>:<zoneId>)
+      final targetZoneId = newItem.action.zoneId;
+      if (targetZoneId != null && targetZoneId.isNotEmpty && eventId != null && eventId.isNotEmpty) {
+        _checkAndFilterZoneNotification(newItem, eventId, targetZoneId, newRecord);
+        return;
+      }
+
       final currentList = List<NotificationItem>.from(_cachedNotifications ?? []);
 
       // Idempotent deduplication
@@ -306,6 +315,54 @@ class NotificationRepositoryImpl implements NotificationRepository {
     } catch (e) {
       debugPrint('NotificationRepository: Error handling Realtime insert: $e');
     }
+  }
+
+  void _checkAndFilterZoneNotification(
+    NotificationItem newItem,
+    String eventId,
+    String targetZoneId,
+    Map<String, dynamic> newRecord,
+  ) {
+    SupabaseAttendeeLocationRepositoryImpl(supabase: _supabase, offlineService: _offlineService)
+        .getLocation(eventId)
+        .then((locState) {
+      final currentZoneId = locState.zoneId;
+      final currentZoneCode = locState.zoneCode?.toLowerCase();
+      final currentZoneName = locState.zoneName?.toLowerCase();
+      final targetLower = targetZoneId.toLowerCase();
+
+      final matchesZone = (currentZoneId != null && currentZoneId.toLowerCase() == targetLower) ||
+          (currentZoneCode != null && currentZoneCode == targetLower) ||
+          (currentZoneName != null && currentZoneName == targetLower);
+
+      if (matchesZone) {
+        final currentList = List<NotificationItem>.from(_cachedNotifications ?? []);
+        if (currentList.any((n) => n.id == newItem.id)) return;
+
+        currentList.insert(0, newItem);
+        currentList.sort((a, b) {
+          if (a.isRead != b.isRead) return a.isRead ? 1 : -1;
+          return b.timestamp.compareTo(a.timestamp);
+        });
+
+        _cachedNotifications = currentList;
+        _controller.add(List.unmodifiable(_cachedNotifications!));
+
+        AppNotificationService.instance.showFromNotificationItem(newItem);
+
+        final partition = _partitionId;
+        final effectiveEventId = _subscribedEventId ?? 'global';
+        _cacheManager.getCachedNotifications(partition, effectiveEventId).then((cached) {
+          final updatedRaw = List<Map<String, dynamic>>.from(cached);
+          if (!updatedRaw.any((r) => r['id']?.toString() == newItem.id)) {
+            updatedRaw.insert(0, newRecord);
+            _cacheManager.cacheNotifications(partition, effectiveEventId, updatedRaw);
+          }
+        });
+      }
+    }).catchError((e) {
+      debugPrint('NotificationRepository: Zone filter evaluation error: $e');
+    });
   }
 
   @override

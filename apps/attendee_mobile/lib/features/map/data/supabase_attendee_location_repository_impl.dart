@@ -110,7 +110,7 @@ class SupabaseAttendeeLocationRepositoryImpl implements AttendeeLocationReposito
       // 4. Query sightings in Supabase observations table
       final response = await _supabase
           .from('observations')
-          .select('zone_id, observed_at, rssi')
+          .select('zone, zone_id, observed_at, rssi')
           .eq('event_id', eventId)
           .inFilter('ephemeral_id', [currentHex, prevHex])
           .gte('observed_at', fiveMinutesAgo)
@@ -134,9 +134,10 @@ class SupabaseAttendeeLocationRepositoryImpl implements AttendeeLocationReposito
         return _lastState;
       }
 
-      // Pick top observation with non-empty zone_id
+      // Pick top observation with non-empty zone_id or zone text
       final topObs = observations.firstWhere(
-        (obs) => obs['zone_id'] != null && obs['zone_id'].toString().isNotEmpty,
+        (obs) => (obs['zone_id'] != null && obs['zone_id'].toString().isNotEmpty) ||
+                 (obs['zone'] != null && obs['zone'].toString().isNotEmpty),
         orElse: () => null,
       );
 
@@ -145,7 +146,25 @@ class SupabaseAttendeeLocationRepositoryImpl implements AttendeeLocationReposito
         return _lastState;
       }
 
-      final zoneId = topObs['zone_id'].toString();
+      var zoneId = topObs['zone_id']?.toString();
+      final zoneText = topObs['zone']?.toString();
+
+      // If zone_id is null, resolve from zone text/code
+      if ((zoneId == null || zoneId.isEmpty) && zoneText != null && zoneText.isNotEmpty) {
+        try {
+          final matchedZone = await _supabase
+              .from('event_zones')
+              .select('id')
+              .eq('event_id', eventId)
+              .or('code.ilike.$zoneText,name.ilike.$zoneText')
+              .limit(1)
+              .maybeSingle();
+          if (matchedZone != null && matchedZone['id'] != null) {
+            zoneId = matchedZone['id'].toString();
+          }
+        } catch (_) {}
+      }
+
       final observedAt = DateTime.tryParse(topObs['observed_at']?.toString() ?? '') ?? DateTime.now();
       final rssi = (topObs['rssi'] as num?)?.toInt();
 
@@ -155,13 +174,15 @@ class SupabaseAttendeeLocationRepositoryImpl implements AttendeeLocationReposito
           : AttendeeLocationStatus.detected;
 
       // 5. Lookup Zone and Level Metadata
-      final zoneMeta = await _resolveZoneMetadata(eventId, zoneId);
+      final zoneMeta = zoneId != null && zoneId.isNotEmpty
+          ? await _resolveZoneMetadata(eventId, zoneId)
+          : <String, dynamic>{'name': zoneText ?? 'Event Venue'};
 
       _lastState = AttendeeLocationState(
         status: status,
         zoneId: zoneId,
-        zoneCode: zoneMeta['code']?.toString(),
-        zoneName: zoneMeta['name']?.toString() ?? 'Zone $zoneId',
+        zoneCode: zoneMeta['code']?.toString() ?? zoneText,
+        zoneName: zoneMeta['name']?.toString() ?? zoneText ?? 'Zone',
         levelId: zoneMeta['level_id']?.toString(),
         levelName: zoneMeta['level_name']?.toString(),
         floorLevel: (zoneMeta['floor_level'] as num?)?.toInt(),
