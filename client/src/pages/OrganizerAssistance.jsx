@@ -163,16 +163,16 @@ export default function OrganizerAssistance() {
             </div>
           </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div className="table-container">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Request Details</th>
-                  <th>Status</th>
-                  <th>Location / Zone</th>
-                  <th>Requested At</th>
-                  <th>Assigned Staff</th>
-                  <th>Actions</th>
+                  <th style={{ minWidth: "180px" }}>Request Details</th>
+                  <th style={{ minWidth: "120px" }}>Status</th>
+                  <th style={{ minWidth: "150px" }}>Location / Zone</th>
+                  <th style={{ minWidth: "140px" }}>Requested At</th>
+                  <th style={{ minWidth: "160px" }}>Assigned Staff</th>
+                  <th style={{ minWidth: "110px", textAlign: "right" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>

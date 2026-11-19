@@ -73,10 +73,35 @@ export default function EventDetail() {
 
   const handleSaveEdit = async (e) => {
     e.preventDefault();
+    const errors = {};
     if (!editForm.name.trim()) {
-      setEditErrors({ name: "Event name is required" });
+      errors.name = "Event name is required";
+    }
+
+    if (editForm.capacity !== "" && editForm.capacity !== null && parseInt(editForm.capacity, 10) < 0) {
+      errors.capacity = "Capacity cannot be negative";
+    }
+
+    if (editForm.ticket_price !== "" && editForm.ticket_price !== null && parseInt(editForm.ticket_price, 10) < 0) {
+      errors.ticket_price = "Ticket price cannot be negative";
+    }
+
+    if (editForm.start_time && editForm.end_time) {
+      const [startH, startM] = editForm.start_time.split(":").map(Number);
+      const [endH, endM] = editForm.end_time.split(":").map(Number);
+      const startMin = startH * 60 + startM;
+      const endMin = endH * 60 + endM;
+      if (endMin <= startMin) {
+        errors.end_time = "End time must be after start time";
+      }
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setEditErrors(errors);
+      toast(Object.values(errors)[0], "warning");
       return;
     }
+
     setSavingEdit(true);
     try {
       const payload = {
@@ -442,10 +467,14 @@ export default function EventDetail() {
                     <input
                       id="edit-event-end"
                       type="time"
-                      className="form-input"
+                      className={`form-input ${editErrors.end_time ? "error" : ""}`}
                       value={editForm.end_time}
-                      onChange={(e) => setEditForm((prev) => ({ ...prev, end_time: e.target.value }))}
+                      onChange={(e) => {
+                        setEditForm((prev) => ({ ...prev, end_time: e.target.value }));
+                        if (editErrors.end_time) setEditErrors((prev) => ({ ...prev, end_time: null }));
+                      }}
                     />
+                    {editErrors.end_time && <p className="form-error">{editErrors.end_time}</p>}
                   </div>
                 </div>
 
@@ -456,11 +485,22 @@ export default function EventDetail() {
                       id="edit-event-price"
                       type="number"
                       min="0"
-                      className="form-input"
+                      step="1"
+                      className={`form-input ${editErrors.ticket_price ? "error" : ""}`}
                       value={editForm.ticket_price}
-                      onChange={(e) => setEditForm((prev) => ({ ...prev, ticket_price: e.target.value }))}
+                      onKeyDown={(e) => {
+                        if (e.key === "-" || e.key === "e" || e.key === "+") e.preventDefault();
+                      }}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === "" || parseInt(val, 10) >= 0) {
+                          setEditForm((prev) => ({ ...prev, ticket_price: val }));
+                          if (editErrors.ticket_price) setEditErrors((prev) => ({ ...prev, ticket_price: null }));
+                        }
+                      }}
                       placeholder="0 = Free"
                     />
+                    {editErrors.ticket_price && <p className="form-error">{editErrors.ticket_price}</p>}
                   </div>
 
                   <div className="form-group">
@@ -469,11 +509,22 @@ export default function EventDetail() {
                       id="edit-event-capacity"
                       type="number"
                       min="0"
-                      className="form-input"
+                      step="1"
+                      className={`form-input ${editErrors.capacity ? "error" : ""}`}
                       value={editForm.capacity}
-                      onChange={(e) => setEditForm((prev) => ({ ...prev, capacity: e.target.value }))}
+                      onKeyDown={(e) => {
+                        if (e.key === "-" || e.key === "e" || e.key === "+") e.preventDefault();
+                      }}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === "" || parseInt(val, 10) >= 0) {
+                          setEditForm((prev) => ({ ...prev, capacity: val }));
+                          if (editErrors.capacity) setEditErrors((prev) => ({ ...prev, capacity: null }));
+                        }
+                      }}
                       placeholder="e.g. 500"
                     />
+                    {editErrors.capacity && <p className="form-error">{editErrors.capacity}</p>}
                   </div>
 
                   <div className="form-group">

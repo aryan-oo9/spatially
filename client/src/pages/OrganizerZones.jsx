@@ -11,7 +11,8 @@ import {
   LuLayers, 
   LuShieldAlert, 
   LuLock, 
-  LuCircleCheck 
+  LuCircleCheck,
+  LuX
 } from "react-icons/lu";
 
 const OPERATIONAL_STATUSES = [
@@ -33,6 +34,7 @@ export default function OrganizerZones() {
   // Modal & Form state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingZone, setEditingZone] = useState(null);
+  const [errors, setErrors] = useState({});
   const [formData, setFormData] = useState({
     name: "",
     code: "",
@@ -85,6 +87,7 @@ export default function OrganizerZones() {
 
   const handleOpenCreate = () => {
     setEditingZone(null);
+    setErrors({});
     setFormData({
       name: "",
       code: "",
@@ -102,11 +105,12 @@ export default function OrganizerZones() {
 
   const handleOpenEdit = (zone) => {
     setEditingZone(zone);
+    setErrors({});
     setFormData({
       name: zone.name || "",
       code: zone.code || "",
-      capacity_limit: zone.capacity_limit || "",
-      operating_capacity: zone.operating_capacity || "",
+      capacity_limit: zone.capacity_limit != null ? zone.capacity_limit : "",
+      operating_capacity: zone.operating_capacity != null ? zone.operating_capacity : "",
       level_id: zone.level_id || "",
       advisory_threshold: zone.advisory_threshold ?? 0.70,
       warning_threshold: zone.warning_threshold ?? 0.85,
@@ -115,6 +119,51 @@ export default function OrganizerZones() {
       is_crowd_monitored: zone.is_crowd_monitored ?? true,
     });
     setIsModalOpen(true);
+  };
+
+  const handleAdvisoryChange = (val) => {
+    const adv = parseFloat(val);
+    setFormData((prev) => {
+      const updated = { ...prev, advisory_threshold: adv };
+      if (prev.warning_threshold <= adv) {
+        updated.warning_threshold = Math.min(0.95, parseFloat((adv + 0.05).toFixed(2)));
+      }
+      if (prev.critical_threshold <= updated.warning_threshold) {
+        updated.critical_threshold = Math.min(1.0, parseFloat((updated.warning_threshold + 0.05).toFixed(2)));
+      }
+      return updated;
+    });
+    if (errors.thresholds) setErrors((prev) => ({ ...prev, thresholds: null }));
+  };
+
+  const handleWarningChange = (val) => {
+    const warn = parseFloat(val);
+    setFormData((prev) => {
+      const updated = { ...prev, warning_threshold: warn };
+      if (warn <= prev.advisory_threshold) {
+        updated.advisory_threshold = Math.max(0.1, parseFloat((warn - 0.05).toFixed(2)));
+      }
+      if (prev.critical_threshold <= warn) {
+        updated.critical_threshold = Math.min(1.0, parseFloat((warn + 0.05).toFixed(2)));
+      }
+      return updated;
+    });
+    if (errors.thresholds) setErrors((prev) => ({ ...prev, thresholds: null }));
+  };
+
+  const handleCriticalChange = (val) => {
+    const crit = parseFloat(val);
+    setFormData((prev) => {
+      const updated = { ...prev, critical_threshold: crit };
+      if (crit <= prev.warning_threshold) {
+        updated.warning_threshold = Math.max(0.2, parseFloat((crit - 0.05).toFixed(2)));
+      }
+      if (updated.warning_threshold <= prev.advisory_threshold) {
+        updated.advisory_threshold = Math.max(0.1, parseFloat((updated.warning_threshold - 0.05).toFixed(2)));
+      }
+      return updated;
+    });
+    if (errors.thresholds) setErrors((prev) => ({ ...prev, thresholds: null }));
   };
 
   const handleDeleteZone = async (zoneId, zoneName) => {
@@ -131,15 +180,54 @@ export default function OrganizerZones() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Strict QA validation
+    const newErrors = {};
+    if (!formData.name.trim()) {
+      newErrors.name = "Zone name is required";
+    }
+
+    const opCap = formData.operating_capacity !== "" && formData.operating_capacity !== null ? parseInt(formData.operating_capacity, 10) : null;
+    const capLimit = formData.capacity_limit !== "" && formData.capacity_limit !== null ? parseInt(formData.capacity_limit, 10) : null;
+
+    if (opCap !== null && (isNaN(opCap) || opCap < 0)) {
+      newErrors.operating_capacity = "Operating capacity cannot be negative";
+    }
+
+    if (capLimit !== null && (isNaN(capLimit) || capLimit < 0)) {
+      newErrors.capacity_limit = "Fire / Legal Max capacity cannot be negative";
+    }
+
+    if (opCap !== null && capLimit !== null && opCap > 0 && capLimit > 0 && opCap > capLimit) {
+      newErrors.operating_capacity = `Operating capacity cannot exceed Fire / Legal Max (${capLimit})`;
+    }
+
+    const adv = parseFloat(formData.advisory_threshold);
+    const warn = parseFloat(formData.warning_threshold);
+    const crit = parseFloat(formData.critical_threshold);
+
+    if (adv >= warn || warn >= crit) {
+      newErrors.thresholds = "Alert thresholds must be ordered: Advisory < Warning < Critical";
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      const firstError = Object.values(newErrors)[0];
+      toast(firstError, "warning");
+      return; // Do NOT submit and do NOT close modal
+    }
+
     try {
       const payload = {
         ...formData,
-        capacity_limit: formData.capacity_limit ? parseInt(formData.capacity_limit, 10) : null,
-        operating_capacity: formData.operating_capacity ? parseInt(formData.operating_capacity, 10) : null,
+        name: formData.name.trim(),
+        code: formData.code.trim() || formData.name.trim().slice(0, 8).toUpperCase(),
+        capacity_limit: capLimit,
+        operating_capacity: opCap,
         level_id: formData.level_id || null,
-        advisory_threshold: parseFloat(formData.advisory_threshold),
-        warning_threshold: parseFloat(formData.warning_threshold),
-        critical_threshold: parseFloat(formData.critical_threshold),
+        advisory_threshold: adv,
+        warning_threshold: warn,
+        critical_threshold: crit,
       };
 
       if (editingZone) {
@@ -204,17 +292,17 @@ export default function OrganizerZones() {
             </button>
           </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div className="table-container" style={{ overflowX: "auto", width: "100%", borderRadius: "var(--radius-lg)", border: "1px solid var(--border-default)" }}>
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Zone / Code</th>
-                  <th>Floor Level</th>
-                  <th>Capacity Limits</th>
-                  <th>Thresholds</th>
-                  <th>Operational Status</th>
-                  <th>Monitoring</th>
-                  <th>Actions</th>
+                  <th style={{ minWidth: "170px" }}>Zone / Code</th>
+                  <th style={{ minWidth: "130px" }}>Floor Level</th>
+                  <th style={{ minWidth: "160px" }}>Capacity Limits</th>
+                  <th style={{ minWidth: "190px" }}>Thresholds</th>
+                  <th style={{ minWidth: "180px" }}>Operational Status</th>
+                  <th style={{ minWidth: "130px" }}>Monitoring</th>
+                  <th style={{ minWidth: "100px", textAlign: "right" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -236,24 +324,24 @@ export default function OrganizerZones() {
                         </span>
                       </td>
                       <td>
-                        <div style={{ fontSize: "0.85rem" }}>
+                        <div style={{ fontSize: "0.85rem", display: "flex", alignItems: "baseline", gap: "4px" }}>
                           <span style={{ color: "var(--warning)", fontWeight: "600" }}>
                             {zone.operating_capacity || 'N/A'}
                           </span>
                           <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>
-                            {" "}/ {zone.capacity_limit || '∞'} max
+                            / {zone.capacity_limit || '∞'} max
                           </span>
                         </div>
                       </td>
                       <td>
-                        <div style={{ display: "flex", gap: "6px", fontSize: "0.75rem" }}>
-                          <span style={{ padding: "2px 6px", borderRadius: "4px", backgroundColor: "rgba(16, 185, 129, 0.15)", color: "#10B981" }} title="Advisory">
+                        <div style={{ display: "flex", gap: "6px", fontSize: "0.75rem", alignItems: "center" }}>
+                          <span style={{ padding: "3px 8px", borderRadius: "4px", backgroundColor: "rgba(16, 185, 129, 0.15)", color: "#10B981", fontWeight: "600" }} title="Advisory">
                             {Math.round((zone.advisory_threshold ?? 0.70) * 100)}%
                           </span>
-                          <span style={{ padding: "2px 6px", borderRadius: "4px", backgroundColor: "rgba(245, 158, 11, 0.15)", color: "#F59E0B" }} title="Warning">
+                          <span style={{ padding: "3px 8px", borderRadius: "4px", backgroundColor: "rgba(245, 158, 11, 0.15)", color: "#F59E0B", fontWeight: "600" }} title="Warning">
                             {Math.round((zone.warning_threshold ?? 0.85) * 100)}%
                           </span>
-                          <span style={{ padding: "2px 6px", borderRadius: "4px", backgroundColor: "rgba(239, 68, 68, 0.15)", color: "#EF4444" }} title="Critical">
+                          <span style={{ padding: "3px 8px", borderRadius: "4px", backgroundColor: "rgba(239, 68, 68, 0.15)", color: "#EF4444", fontWeight: "600" }} title="Critical">
                             {Math.round((zone.critical_threshold ?? 0.95) * 100)}%
                           </span>
                         </div>
@@ -261,13 +349,15 @@ export default function OrganizerZones() {
                       <td>
                         <span 
                           style={{ 
-                            padding: "3px 8px", 
+                            padding: "4px 10px", 
                             borderRadius: "12px", 
                             fontSize: "0.75rem", 
                             fontWeight: "600",
                             backgroundColor: `${statusObj.color}20`,
                             color: statusObj.color,
-                            border: `1px solid ${statusObj.color}40`
+                            border: `1px solid ${statusObj.color}40`,
+                            display: "inline-block",
+                            whiteSpace: "nowrap"
                           }}
                         >
                           {statusObj.label}
@@ -281,7 +371,7 @@ export default function OrganizerZones() {
                         )}
                       </td>
                       <td>
-                        <div style={{ display: "flex", gap: "8px" }}>
+                        <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
                           <button className="btn btn-ghost btn-sm" onClick={() => handleOpenEdit(zone)} title="Edit Zone">
                             <LuPencil size={14} />
                           </button>
@@ -306,14 +396,17 @@ export default function OrganizerZones() {
 
       {/* CREATE / EDIT ZONE MODAL */}
       {isModalOpen && (
-        <div className="modal-backdrop fade-in" onClick={() => setIsModalOpen(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: "560px" }}>
+        <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: "580px", width: "100%" }}>
             <div className="modal-header">
               <h3>{editingZone ? `Edit "${editingZone.name}"` : "Create New Zone"}</h3>
-              <button className="btn btn-ghost" onClick={() => setIsModalOpen(false)}>&times;</button>
+              <button className="btn btn-ghost" onClick={() => setIsModalOpen(false)} style={{ fontSize: "1.2rem", padding: "4px 8px" }}>
+                <LuX />
+              </button>
             </div>
-            <div className="modal-body">
-              <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            
+            <form onSubmit={handleSubmit}>
+              <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                 
                 {/* Zone Name & Code */}
                 <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "12px" }}>
@@ -321,12 +414,16 @@ export default function OrganizerZones() {
                     <label className="form-label">Zone Name *</label>
                     <input 
                       type="text" 
-                      className="form-input" 
+                      className={`form-input ${errors.name ? "error" : ""}`} 
                       placeholder="e.g. North Concourse"
                       value={formData.name}
-                      onChange={e => setFormData({...formData, name: e.target.value})}
+                      onChange={e => {
+                        setFormData({...formData, name: e.target.value});
+                        if (errors.name) setErrors(prev => ({ ...prev, name: null }));
+                      }}
                       required 
                     />
+                    {errors.name && <p className="form-error">{errors.name}</p>}
                   </div>
                   <div className="form-group">
                     <label className="form-label">Code</label>
@@ -368,26 +465,50 @@ export default function OrganizerZones() {
                     <label className="form-label">Operating Capacity (Target)</label>
                     <input 
                       type="number" 
-                      className="form-input" 
+                      min="0"
+                      step="1"
+                      className={`form-input ${errors.operating_capacity ? "error" : ""}`} 
                       placeholder="e.g. 500"
                       value={formData.operating_capacity}
-                      onChange={e => setFormData({...formData, operating_capacity: e.target.value})}
+                      onKeyDown={(e) => {
+                        if (e.key === "-" || e.key === "e" || e.key === "+") e.preventDefault();
+                      }}
+                      onChange={e => {
+                        const val = e.target.value;
+                        if (val === "" || parseInt(val, 10) >= 0) {
+                          setFormData({...formData, operating_capacity: val});
+                          if (errors.operating_capacity) setErrors(prev => ({ ...prev, operating_capacity: null }));
+                        }
+                      }}
                     />
+                    {errors.operating_capacity && <p className="form-error">{errors.operating_capacity}</p>}
                   </div>
                   <div className="form-group">
                     <label className="form-label">Fire / Legal Max Capacity</label>
                     <input 
                       type="number" 
-                      className="form-input" 
+                      min="0"
+                      step="1"
+                      className={`form-input ${errors.capacity_limit ? "error" : ""}`} 
                       placeholder="e.g. 600"
                       value={formData.capacity_limit}
-                      onChange={e => setFormData({...formData, capacity_limit: e.target.value})}
+                      onKeyDown={(e) => {
+                        if (e.key === "-" || e.key === "e" || e.key === "+") e.preventDefault();
+                      }}
+                      onChange={e => {
+                        const val = e.target.value;
+                        if (val === "" || parseInt(val, 10) >= 0) {
+                          setFormData({...formData, capacity_limit: val});
+                          if (errors.capacity_limit) setErrors(prev => ({ ...prev, capacity_limit: null }));
+                        }
+                      }}
                     />
+                    {errors.capacity_limit && <p className="form-error">{errors.capacity_limit}</p>}
                   </div>
                 </div>
 
                 {/* Safety Threshold Sliders */}
-                <div style={{ background: "var(--bg-secondary)", padding: "14px", borderRadius: "8px", border: "1px solid var(--border-light)" }}>
+                <div style={{ background: "var(--bg-secondary)", padding: "14px", borderRadius: "8px", border: "1px solid var(--border-default)" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "12px", fontSize: "0.85rem", fontWeight: "700" }}>
                     <LuSlidersHorizontal size={16} /> Automated Alert Thresholds (% of Operating Capacity)
                   </div>
@@ -400,12 +521,12 @@ export default function OrganizerZones() {
                       </div>
                       <input 
                         type="range" 
-                        min="0.30" 
-                        max="0.80" 
+                        min="0.10" 
+                        max="0.85" 
                         step="0.05"
                         style={{ width: "100%", accentColor: "#10B981" }}
                         value={formData.advisory_threshold}
-                        onChange={e => setFormData({...formData, advisory_threshold: parseFloat(e.target.value)})}
+                        onChange={e => handleAdvisoryChange(e.target.value)}
                       />
                     </div>
 
@@ -416,12 +537,12 @@ export default function OrganizerZones() {
                       </div>
                       <input 
                         type="range" 
-                        min="0.60" 
+                        min="0.20" 
                         max="0.95" 
                         step="0.05"
                         style={{ width: "100%", accentColor: "#F59E0B" }}
                         value={formData.warning_threshold}
-                        onChange={e => setFormData({...formData, warning_threshold: parseFloat(e.target.value)})}
+                        onChange={e => handleWarningChange(e.target.value)}
                       />
                     </div>
 
@@ -432,14 +553,15 @@ export default function OrganizerZones() {
                       </div>
                       <input 
                         type="range" 
-                        min="0.80" 
+                        min="0.30" 
                         max="1.00" 
                         step="0.05"
                         style={{ width: "100%", accentColor: "#EF4444" }}
                         value={formData.critical_threshold}
-                        onChange={e => setFormData({...formData, critical_threshold: parseFloat(e.target.value)})}
+                        onChange={e => handleCriticalChange(e.target.value)}
                       />
                     </div>
+                    {errors.thresholds && <p className="form-error">{errors.thresholds}</p>}
                   </div>
                 </div>
 
@@ -462,7 +584,7 @@ export default function OrganizerZones() {
                   </select>
                 </div>
 
-                <div className="form-group">
+                <div className="form-group" style={{ marginBottom: 0 }}>
                   <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontSize: "0.85rem" }}>
                     <input 
                       type="checkbox" 
@@ -472,13 +594,13 @@ export default function OrganizerZones() {
                     Enable real-time BLE crowd telemetry and camera snapshots for this zone
                   </label>
                 </div>
+              </div>
 
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px", marginTop: "12px" }}>
-                  <button type="button" className="btn btn-ghost" onClick={() => setIsModalOpen(false)}>Cancel</button>
-                  <button type="submit" className="btn btn-primary">{editingZone ? "Save Changes" : "Create Zone"}</button>
-                </div>
-              </form>
-            </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary">{editingZone ? "Save Changes" : "Create Zone"}</button>
+              </div>
+            </form>
           </div>
         </div>
       )}

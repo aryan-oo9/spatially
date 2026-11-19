@@ -110,6 +110,13 @@ class EventCreate(BaseModel):
             raise ValueError("Venue is required")
         return v.strip()
 
+    @field_validator("capacity", "ticket_price")
+    @classmethod
+    def check_non_negative_values(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("Value cannot be negative")
+        return v
+
 
 class EventUpdate(BaseModel):
     name: Optional[str] = None
@@ -128,6 +135,13 @@ class EventUpdate(BaseModel):
     status: Optional[str] = None
     location_address: Optional[str] = None
     organizer_name: Optional[str] = None
+
+    @field_validator("capacity", "ticket_price")
+    @classmethod
+    def check_non_negative_values(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("Value cannot be negative")
+        return v
 
 
 class InviteByIdRequest(BaseModel):

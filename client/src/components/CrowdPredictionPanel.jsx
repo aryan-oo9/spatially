@@ -101,12 +101,12 @@ export default function CrowdPredictionPanel({ eventId, horizon: defaultHorizon 
       {/* Header with Title and Horizon Selection */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
         <h3 style={{ fontSize: "1rem", fontWeight: 700, display: "flex", alignItems: "center", gap: "8px", margin: 0 }}>
-          <LuShieldAlert size={18} color="var(--primary)" /> Predicted Overcrowding
+          <LuShieldAlert size={18} color="var(--green-400)" /> Predicted Overcrowding
         </h3>
         
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Horizon:</span>
-          <div style={{ display: "flex", gap: "4px", background: "rgba(255,255,255,0.05)", padding: "3px", borderRadius: "6px" }}>
+          <div style={{ display: "flex", gap: "4px", background: "var(--bg-tertiary)", padding: "3px", borderRadius: "6px", border: "1px solid var(--border-default)" }}>
             {HORIZON_OPTIONS.map((h) => {
               const isSelected = selectedHorizon === h;
               return (
@@ -117,10 +117,10 @@ export default function CrowdPredictionPanel({ eventId, horizon: defaultHorizon 
                   onClick={() => setSelectedHorizon(h)}
                   style={{
                     cursor: "pointer",
-                    padding: "3px 9px",
+                    padding: "4px 10px",
                     borderRadius: "4px",
                     border: "none",
-                    background: isSelected ? "var(--primary)" : "transparent",
+                    background: isSelected ? "var(--green-600)" : "transparent",
                     color: isSelected ? "#fff" : "var(--text-muted)",
                     fontWeight: isSelected ? 700 : 500,
                     fontSize: "0.75rem",
@@ -132,7 +132,7 @@ export default function CrowdPredictionPanel({ eventId, horizon: defaultHorizon 
               );
             })}
           </div>
-          <span className="badge info" style={{ fontSize: "0.75rem" }}>
+          <span className="badge badge-success" style={{ fontSize: "0.75rem" }}>
             Next {data?.horizon_minutes || selectedHorizon} min
           </span>
         </div>
@@ -168,14 +168,17 @@ export default function CrowdPredictionPanel({ eventId, horizon: defaultHorizon 
               id={`prediction-card-${zid}`}
               style={{ 
                 borderLeft: `4px solid ${s.color}`, 
-                background: "rgba(255,255,255,0.03)", 
+                background: "var(--bg-tertiary)", 
+                border: "1px solid var(--border-default)",
+                borderLeftWidth: "4px",
+                borderLeftColor: s.color,
                 borderRadius: "8px", 
-                padding: "14px 16px" 
+                padding: "16px 18px" 
               }}
             >
               {/* Header row: Zone name, risk, projected % */}
               <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", flexWrap: "wrap", alignItems: "baseline" }}>
-                <strong style={{ fontSize: "0.95rem" }}>{p.zone_name}</strong>
+                <strong style={{ fontSize: "1rem", color: "var(--text-primary)" }}>{p.zone_name}</strong>
                 <span style={{ color: s.color, fontWeight: 700, fontSize: "0.85rem" }}>
                   {s.label} · {Math.round((p.projected_ratio || 0) * 100)}% projected
                   {p.current_ratio != null && (
@@ -189,7 +192,7 @@ export default function CrowdPredictionPanel({ eventId, horizon: defaultHorizon 
               {/* ETA and Confidence */}
               <div style={{ display: "flex", gap: "16px", marginTop: "6px", fontSize: "0.8rem", color: "var(--text-muted)", flexWrap: "wrap" }}>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
-                  <LuClock size={14} color="var(--primary)" />
+                  <LuClock size={14} color="var(--green-400)" />
                   {p.eta_minutes === 0 ? "Threshold already reached" : p.eta_minutes != null ? `~${p.eta_minutes} min to warning` : "Stable rate"}
                 </span>
                 <span>Confidence: {Math.round((p.confidence || 0) * 100)}%</span>
@@ -206,35 +209,33 @@ export default function CrowdPredictionPanel({ eventId, horizon: defaultHorizon 
 
               {/* Suggested Action & One-Click Mitigation Dispatches */}
               {p.suggested_action && (
-                <div style={{ marginTop: "12px", padding: "10px 12px", background: "rgba(255,255,255,0.02)", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <div style={{ fontSize: "0.83rem", display: "flex", gap: "6px", alignItems: "flex-start", marginBottom: "10px" }}>
-                    <LuLightbulb size={15} color="var(--warning)" style={{ marginTop: "2px", flexShrink: 0 }} /> 
+                <div style={{ marginTop: "12px", padding: "12px 14px", background: "var(--bg-secondary)", borderRadius: "8px", border: "1px solid var(--border-default)" }}>
+                  <div style={{ fontSize: "0.85rem", display: "flex", gap: "8px", alignItems: "flex-start", marginBottom: "12px", color: "var(--text-secondary)" }}>
+                    <LuLightbulb size={16} color="var(--warning)" style={{ marginTop: "2px", flexShrink: 0 }} /> 
                     <span>{p.suggested_action}</span>
                   </div>
 
                   {/* Action Shortcuts */}
-                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
                     <button
                       type="button"
                       id={`btn-dispatch-task-${zid}`}
                       onClick={() => handleDispatchTask(p)}
                       disabled={isTaskBusy || hasTaskDispatched}
+                      className="btn btn-sm btn-secondary"
                       style={{
                         display: "inline-flex",
                         alignItems: "center",
                         gap: "6px",
-                        fontSize: "0.75rem",
-                        padding: "5px 10px",
-                        borderRadius: "5px",
-                        border: "1px solid rgba(255,255,255,0.15)",
-                        background: hasTaskDispatched ? "rgba(34, 197, 94, 0.2)" : "rgba(255,255,255,0.05)",
-                        color: hasTaskDispatched ? "var(--success)" : "var(--text-main)",
+                        fontSize: "0.78rem",
+                        padding: "6px 12px",
+                        background: hasTaskDispatched ? "rgba(93, 166, 58, 0.2)" : undefined,
+                        borderColor: hasTaskDispatched ? "rgba(93, 166, 58, 0.4)" : undefined,
+                        color: hasTaskDispatched ? "var(--green-300)" : undefined,
                         cursor: hasTaskDispatched ? "default" : "pointer",
-                        fontWeight: 600,
-                        transition: "all 0.15s ease",
                       }}
                     >
-                      {isTaskBusy ? <LuLoader className="spin" size={13} /> : hasTaskDispatched ? <LuCheck size={13} /> : <LuSquareCheck size={13} />}
+                      {isTaskBusy ? <LuLoader className="spin" size={13} /> : hasTaskDispatched ? <LuCheck size={13} color="var(--green-400)" /> : <LuSquareCheck size={13} color="var(--green-400)" />}
                       {hasTaskDispatched ? "Task Dispatched" : "Dispatch Task"}
                     </button>
 
@@ -243,22 +244,20 @@ export default function CrowdPredictionPanel({ eventId, horizon: defaultHorizon 
                       id={`btn-broadcast-alert-${zid}`}
                       onClick={() => handleBroadcastAlert(p)}
                       disabled={isCommBusy || hasCommDispatched}
+                      className="btn btn-sm btn-secondary"
                       style={{
                         display: "inline-flex",
                         alignItems: "center",
                         gap: "6px",
-                        fontSize: "0.75rem",
-                        padding: "5px 10px",
-                        borderRadius: "5px",
-                        border: "1px solid rgba(255,255,255,0.15)",
-                        background: hasCommDispatched ? "rgba(34, 197, 94, 0.2)" : "rgba(255,255,255,0.05)",
-                        color: hasCommDispatched ? "var(--success)" : "var(--text-main)",
+                        fontSize: "0.78rem",
+                        padding: "6px 12px",
+                        background: hasCommDispatched ? "rgba(93, 166, 58, 0.2)" : undefined,
+                        borderColor: hasCommDispatched ? "rgba(93, 166, 58, 0.4)" : undefined,
+                        color: hasCommDispatched ? "var(--green-300)" : undefined,
                         cursor: hasCommDispatched ? "default" : "pointer",
-                        fontWeight: 600,
-                        transition: "all 0.15s ease",
                       }}
                     >
-                      {isCommBusy ? <LuLoader className="spin" size={13} /> : hasCommDispatched ? <LuCheck size={13} /> : <LuRadio size={13} />}
+                      {isCommBusy ? <LuLoader className="spin" size={13} /> : hasCommDispatched ? <LuCheck size={13} color="var(--green-400)" /> : <LuRadio size={13} color="var(--green-400)" />}
                       {hasCommDispatched ? "Alert Sent" : "Broadcast Alert"}
                     </button>
                   </div>

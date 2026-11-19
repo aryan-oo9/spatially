@@ -174,8 +174,12 @@ export default function CreateEvent() {
       newErrors.event_date = "Event date cannot be in the past";
     }
 
-    if (form.ticket_price && parseInt(form.ticket_price, 10) < 0) {
+    if (form.ticket_price !== "" && form.ticket_price !== null && parseInt(form.ticket_price, 10) < 0) {
       newErrors.ticket_price = "Ticket price cannot be negative";
+    }
+
+    if (form.capacity !== "" && form.capacity !== null && parseInt(form.capacity, 10) < 0) {
+      newErrors.capacity = "Maximum capacity cannot be negative";
     }
 
     // Mandatory start_time and end_time validation
@@ -491,10 +495,19 @@ export default function CreateEvent() {
               id="ticket-price"
               type="number"
               min="0"
+              step="1"
               className={`form-input ${errors.ticket_price ? "error" : ""}`}
               placeholder="e.g. 100 (0 for free)"
               value={form.ticket_price}
-              onChange={(e) => updateField("ticket_price", e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "-" || e.key === "e" || e.key === "+") e.preventDefault();
+              }}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === "" || parseInt(val, 10) >= 0) {
+                  updateField("ticket_price", val);
+                }
+              }}
             />
             {errors.ticket_price && <p className="form-error">{errors.ticket_price}</p>}
           </div>
@@ -505,7 +518,25 @@ export default function CreateEvent() {
 
           <div className="form-group">
             <label className="form-label" htmlFor="event-capacity">Maximum Capacity</label>
-            <input id="event-capacity" type="number" className="form-input" placeholder="0 = Unlimited" min="0" value={form.capacity} onChange={(e) => updateField("capacity", e.target.value)} />
+            <input 
+              id="event-capacity" 
+              type="number" 
+              className={`form-input ${errors.capacity ? "error" : ""}`} 
+              placeholder="0 = Unlimited" 
+              min="0" 
+              step="1"
+              value={form.capacity} 
+              onKeyDown={(e) => {
+                if (e.key === "-" || e.key === "e" || e.key === "+") e.preventDefault();
+              }}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === "" || parseInt(val, 10) >= 0) {
+                  updateField("capacity", val);
+                }
+              }} 
+            />
+            {errors.capacity && <p className="form-error">{errors.capacity}</p>}
           </div>
 
           <div className="form-group">

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 import re
 import uuid
 from typing import Optional, List, Dict, Any
@@ -29,6 +29,13 @@ class VenueCreate(BaseModel):
     floors: Optional[List[VenueLevelInput]] = None
     metadata: Optional[Dict[str, Any]] = None
 
+    @field_validator("default_capacity")
+    @classmethod
+    def check_non_negative_capacity(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("Default capacity cannot be negative")
+        return v
+
 
 class VenueUpdate(BaseModel):
     name: Optional[str] = None
@@ -38,6 +45,13 @@ class VenueUpdate(BaseModel):
     default_capacity: Optional[int] = None
     floors: Optional[List[VenueLevelInput]] = None
     metadata: Optional[Dict[str, Any]] = None
+
+    @field_validator("default_capacity")
+    @classmethod
+    def check_non_negative_capacity(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("Default capacity cannot be negative")
+        return v
 
 
 def generate_unique_slug(supabase, name: str, exclude_id: Optional[str] = None) -> str:
@@ -136,6 +150,8 @@ async def create_venue(
     name = data.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Venue name is required")
+    if data.default_capacity is not None and data.default_capacity < 0:
+        raise HTTPException(status_code=400, detail="Default venue capacity cannot be negative")
 
     slug = generate_unique_slug(supabase, name)
 
@@ -213,6 +229,9 @@ async def update_venue(
     existing = supabase.table("venues").select("*").eq("id", venue_id).execute()
     if not existing.data:
         raise HTTPException(status_code=404, detail="Venue not found")
+
+    if data.default_capacity is not None and data.default_capacity < 0:
+        raise HTTPException(status_code=400, detail="Default venue capacity cannot be negative")
 
     old_venue = existing.data[0]
     updates: Dict[str, Any] = {}

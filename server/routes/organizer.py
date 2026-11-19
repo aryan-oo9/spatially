@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse
 from config import get_supabase
 from middleware.auth import get_current_user, require_organizer
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional, List, Any, Dict
 from datetime import datetime, timezone, timedelta
 from services import crowd_prediction
@@ -68,6 +68,13 @@ class DiversionDispatchPayload(BaseModel):
     custom_description: Optional[str] = None
     auto_broadcast: Optional[bool] = True
 
+    @field_validator("bonus_points")
+    @classmethod
+    def check_non_negative_points(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("Bonus points cannot be negative")
+        return v
+
 class AutoDiversionTogglePayload(BaseModel):
     enabled: bool
 
@@ -93,6 +100,13 @@ class ZoneCreate(BaseModel):
     operational_status: Optional[str] = "open"
     is_crowd_monitored: bool = True
 
+    @field_validator("capacity_limit", "operating_capacity")
+    @classmethod
+    def check_non_negative_capacity(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("Capacity cannot be negative")
+        return v
+
 class ZoneUpdate(BaseModel):
     name: Optional[str] = None
     code: Optional[str] = None
@@ -106,6 +120,13 @@ class ZoneUpdate(BaseModel):
     operational_status: Optional[str] = None
     is_crowd_monitored: Optional[bool] = None
     is_active: Optional[bool] = None
+
+    @field_validator("capacity_limit", "operating_capacity")
+    @classmethod
+    def check_non_negative_capacity(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("Capacity cannot be negative")
+        return v
 
 class BoothCreate(BaseModel):
     event_id: str
@@ -1282,16 +1303,37 @@ async def list_zones(event_id: str, current_user: dict = Depends(require_organiz
 async def create_zone(data: ZoneCreate, current_user: dict = Depends(require_organizer)):
     supabase = get_supabase()
     verify_event_ownership(supabase, data.event_id, current_user["user_id"])
+
+    # Logical boundaries
+    if data.operating_capacity is not None and data.operating_capacity < 0:
+        raise HTTPException(status_code=400, detail="Operating capacity cannot be negative")
+    if data.capacity_limit is not None and data.capacity_limit < 0:
+        raise HTTPException(status_code=400, detail="Fire / Legal Max capacity cannot be negative")
+    if data.operating_capacity and data.capacity_limit and data.operating_capacity > data.capacity_limit:
+        raise HTTPException(status_code=400, detail="Operating capacity cannot exceed Fire / Legal Max capacity")
+
+    adv = data.advisory_threshold if data.advisory_threshold is not None else 0.70
+    warn = data.warning_threshold if data.warning_threshold is not None else 0.85
+    crit = data.critical_threshold if data.critical_threshold is not None else 0.95
+    if adv >= warn or warn >= crit:
+        raise HTTPException(status_code=400, detail="Thresholds must be ordered: Advisory < Warning < Critical")
+
     new_zone = {
         "event_id": data.event_id,
-        "name": data.name,
-        "code": data.code or data.name,
+        "name": data.name.strip(),
+        "code": (data.code or data.name).strip(),
         "floor_level": data.floor_level or 1,
         "is_crowd_monitored": data.is_crowd_monitored,
+        "advisory_threshold": adv,
+        "warning_threshold": warn,
+        "critical_threshold": crit,
+        "operational_status": data.operational_status or "open",
     }
-    if data.capacity_limit:
+    if data.level_id:
+        new_zone["level_id"] = data.level_id
+    if data.capacity_limit is not None:
         new_zone["capacity_limit"] = data.capacity_limit
-    if data.operating_capacity:
+    if data.operating_capacity is not None:
         new_zone["operating_capacity"] = data.operating_capacity
     
     result = supabase.table("event_zones").insert(new_zone).execute()
@@ -1304,6 +1346,27 @@ async def update_zone(zone_id: str, data: ZoneUpdate, current_user: dict = Depen
     existing = supabase.table("event_zones").select("*").eq("id", zone_id).execute()
     if not existing.data:
         raise HTTPException(status_code=404, detail="Zone not found")
+    
+    current_zone = existing.data[0]
+    verify_event_ownership(supabase, current_zone["event_id"], current_user["user_id"])
+
+    # Logical boundaries
+    if data.operating_capacity is not None and data.operating_capacity < 0:
+        raise HTTPException(status_code=400, detail="Operating capacity cannot be negative")
+    if data.capacity_limit is not None and data.capacity_limit < 0:
+        raise HTTPException(status_code=400, detail="Fire / Legal Max capacity cannot be negative")
+
+    final_op = data.operating_capacity if data.operating_capacity is not None else current_zone.get("operating_capacity")
+    final_limit = data.capacity_limit if data.capacity_limit is not None else current_zone.get("capacity_limit")
+    if final_op and final_limit and final_op > 0 and final_limit > 0 and final_op > final_limit:
+        raise HTTPException(status_code=400, detail="Operating capacity cannot exceed Fire / Legal Max capacity")
+
+    final_adv = data.advisory_threshold if data.advisory_threshold is not None else current_zone.get("advisory_threshold", 0.70)
+    final_warn = data.warning_threshold if data.warning_threshold is not None else current_zone.get("warning_threshold", 0.85)
+    final_crit = data.critical_threshold if data.critical_threshold is not None else current_zone.get("critical_threshold", 0.95)
+    if final_adv is not None and final_warn is not None and final_crit is not None:
+        if final_adv >= final_warn or final_warn >= final_crit:
+            raise HTTPException(status_code=400, detail="Thresholds must be ordered: Advisory < Warning < Critical")
 
     updates = {k: v for k, v in data.model_dump(exclude_none=True).items()}
     if not updates:
@@ -1454,6 +1517,10 @@ async def list_sessions(event_id: str, current_user: dict = Depends(require_orga
 async def create_session(data: SessionCreate, current_user: dict = Depends(require_organizer)):
     supabase = get_supabase()
     verify_event_ownership(supabase, data.event_id, current_user["user_id"])
+
+    if data.start_time and data.end_time and data.end_time <= data.start_time:
+        raise HTTPException(status_code=400, detail="Session end time must be after start time")
+
     new_session = {
         "event_id": data.event_id,
         "title": data.title,
@@ -1486,6 +1553,11 @@ async def update_session(session_id: str, data: SessionUpdate, current_user: dic
     updates = {k: v for k, v in data.model_dump(exclude_none=True).items()}
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
+
+    start = updates.get("start_time") or existing.data[0].get("start_time")
+    end = updates.get("end_time") or existing.data[0].get("end_time")
+    if start and end and end <= start:
+        raise HTTPException(status_code=400, detail="Session end time must be after start time")
     
     result = supabase.table("sessions").update(updates).eq("id", session_id).execute()
     return {"message": "Session updated", "data": result.data}
@@ -1967,6 +2039,15 @@ async def create_shift(data: ShiftCreate, current_user: dict = Depends(require_o
     supabase = get_supabase()
     verify_event_ownership(supabase, data.event_id, current_user["user_id"])
 
+    if data.scheduled_start and data.scheduled_end:
+        try:
+            s_dt = datetime.fromisoformat(data.scheduled_start.replace("Z", "+00:00"))
+            e_dt = datetime.fromisoformat(data.scheduled_end.replace("Z", "+00:00"))
+            if e_dt <= s_dt:
+                raise HTTPException(status_code=400, detail="Shift end time must be after scheduled start time")
+        except ValueError:
+            pass
+
     # Ensure volunteer_assignments row exists to satisfy assignment_id FK constraint
     assign = (
         supabase.table("volunteer_assignments")
@@ -2243,6 +2324,13 @@ class ActivityCreate(BaseModel):
     checkpoint_code: Optional[str] = None
     is_active: bool = True
 
+    @field_validator("points_reward", "points_value", "points", "max_completions")
+    @classmethod
+    def check_non_negative(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("Numeric values cannot be negative")
+        return v
+
 
 class ActivityUpdate(BaseModel):
     title: Optional[str] = None
@@ -2255,6 +2343,13 @@ class ActivityUpdate(BaseModel):
     zone_id: Optional[str] = None
     checkpoint_code: Optional[str] = None
     is_active: Optional[bool] = None
+
+    @field_validator("points_reward", "points_value", "points", "max_completions")
+    @classmethod
+    def check_non_negative(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("Numeric values cannot be negative")
+        return v
 
 
 class QuestGenerateRequest(BaseModel):
@@ -2450,6 +2545,8 @@ async def create_activity(data: ActivityCreate, current_user: dict = Depends(req
         act_type = 'scavenger' if ('stall' in act_type or 'booth' in act_type) else 'game'
 
     pts = data.points_reward if data.points_reward is not None else (data.points_value or data.points or 50)
+    if pts < 0:
+        raise HTTPException(status_code=400, detail="Points reward cannot be negative")
 
     new_act = {
         "event_id": data.event_id,
@@ -2544,10 +2641,20 @@ class CrowdCalibrationRequest(BaseModel):
     manual_count: int
     notes: Optional[str] = None
 
+    @field_validator("manual_count")
+    @classmethod
+    def check_non_negative_count(cls, v):
+        if v < 0:
+            raise ValueError("Turnstile headcount cannot be negative")
+        return v
+
 
 @router.post("/crowd/calibrate")
 async def calibrate_crowd(data: CrowdCalibrationRequest, event_id: str = Query(...), current_user: dict = Depends(require_organizer)):
     """Submit manual turnstile headcount calibration for a zone."""
+    if data.manual_count < 0:
+        raise HTTPException(status_code=400, detail="Turnstile headcount cannot be negative")
+
     supabase = get_supabase()
     verify_event_ownership(supabase, event_id, current_user["user_id"])
 

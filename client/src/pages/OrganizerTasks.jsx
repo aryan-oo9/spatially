@@ -11,7 +11,8 @@ import {
   LuPlay, 
   LuCheck, 
   LuSparkles,
-  LuCalendar
+  LuCalendar,
+  LuX
 } from "react-icons/lu";
 
 const TASK_TEMPLATES = [
@@ -84,9 +85,22 @@ export default function OrganizerTasks() {
   // Create Task
   const handleCreateTask = async (e) => {
     e.preventDefault();
+    if (!newTask.title.trim()) {
+      toast("Task title is required", "warning");
+      return;
+    }
+    if (newTask.due_at) {
+      const dueTime = new Date(newTask.due_at).getTime();
+      if (isNaN(dueTime) || dueTime < Date.now() - 60000) {
+        toast("Task due date/time cannot be in the past", "warning");
+        return;
+      }
+    }
     try {
       await api.post("/api/organizer/tasks", {
         ...newTask,
+        title: newTask.title.trim(),
+        description: newTask.description.trim(),
         event_id: selectedEventId,
       });
       toast("Task created and dispatched", "success");
@@ -300,35 +314,38 @@ export default function OrganizerTasks() {
 
       {/* CREATE TASK MODAL WITH TEMPLATES */}
       {isModalOpen && (
-        <div className="modal-backdrop fade-in" onClick={() => setIsModalOpen(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: "520px" }}>
+        <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: "560px", width: "100%" }}>
             <div className="modal-header">
               <h3>Dispatch Operational Task</h3>
-              <button className="btn btn-ghost" onClick={() => setIsModalOpen(false)}>&times;</button>
+              <button className="btn btn-ghost" onClick={() => setIsModalOpen(false)} style={{ fontSize: "1.2rem", padding: "4px 8px" }}>
+                <LuX />
+              </button>
             </div>
-            <div className="modal-body">
-              {/* Batch Task Templates */}
-              <div style={{ marginBottom: "16px" }}>
-                <div style={{ fontSize: "0.8rem", fontWeight: "700", color: "var(--text-secondary)", marginBottom: "6px", display: "flex", alignItems: "center", gap: "6px" }}>
-                  <LuSparkles size={14} color="var(--primary)" /> Quick Operational Templates:
+            
+            <form onSubmit={handleCreateTask}>
+              <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                {/* Batch Task Templates */}
+                <div>
+                  <div style={{ fontSize: "0.8rem", fontWeight: "700", color: "var(--text-secondary)", marginBottom: "8px", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <LuSparkles size={14} color="var(--primary, #10b981)" /> Quick Operational Templates:
+                  </div>
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                    {TASK_TEMPLATES.map((tmpl, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        className="btn btn-sm btn-ghost"
+                        style={{ fontSize: "0.75rem", padding: "4px 10px", background: "var(--bg-tertiary)", border: "1px solid var(--border-default)" }}
+                        onClick={() => applyTemplate(tmpl)}
+                      >
+                        {tmpl.title}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                  {TASK_TEMPLATES.map((tmpl, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      className="btn btn-sm btn-ghost"
-                      style={{ fontSize: "0.75rem", padding: "3px 8px", background: "var(--bg-secondary)" }}
-                      onClick={() => applyTemplate(tmpl)}
-                    >
-                      {tmpl.title}
-                    </button>
-                  ))}
-                </div>
-              </div>
 
-              <form onSubmit={handleCreateTask} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                <div className="form-group">
+                <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">Task Title *</label>
                   <input
                     type="text"
@@ -340,8 +357,8 @@ export default function OrganizerTasks() {
                   />
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                  <div className="form-group">
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">Sector / Zone</label>
                     <select
                       className="form-select"
@@ -353,7 +370,7 @@ export default function OrganizerTasks() {
                     </select>
                   </div>
 
-                  <div className="form-group">
+                  <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">Assignee</label>
                     <select
                       className="form-select"
@@ -370,8 +387,8 @@ export default function OrganizerTasks() {
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                  <div className="form-group">
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">Priority</label>
                     <select
                       className="form-select"
@@ -384,33 +401,35 @@ export default function OrganizerTasks() {
                     </select>
                   </div>
 
-                  <div className="form-group">
+                  <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">Due At</label>
                     <input
                       type="datetime-local"
                       className="form-input"
+                      min={new Date().toISOString().slice(0, 16)}
                       value={newTask.due_at}
                       onChange={e => setNewTask({...newTask, due_at: e.target.value})}
                     />
                   </div>
                 </div>
 
-                <div className="form-group">
+                <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">Instructions / Description</label>
                   <textarea
                     className="form-textarea"
                     placeholder="Specific protocols, equipment checklists..."
                     value={newTask.description}
                     onChange={e => setNewTask({...newTask, description: e.target.value})}
+                    style={{ minHeight: "85px" }}
                   />
                 </div>
+              </div>
 
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "6px" }}>
-                  <button type="button" className="btn btn-ghost" onClick={() => setIsModalOpen(false)}>Cancel</button>
-                  <button type="submit" className="btn btn-primary">Dispatch Task</button>
-                </div>
-              </form>
-            </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary">Dispatch Task</button>
+              </div>
+            </form>
           </div>
         </div>
       )}

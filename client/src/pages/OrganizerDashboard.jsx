@@ -208,60 +208,75 @@ export default function OrganizerDashboard() {
         flexWrap: "wrap", 
         alignItems: "center", 
         justifyContent: "space-between", 
-        gap: "16px",
-        padding: "16px 20px", 
+        gap: "20px",
+        padding: "18px 24px", 
         borderRadius: "12px", 
         backgroundColor: "var(--bg-secondary)", 
-        border: `1px solid ${healthGauge.color}40`,
-        borderLeft: `6px solid ${healthGauge.color}`
+        border: "1px solid var(--border-default)",
+        boxShadow: "0 4px 20px rgba(0, 0, 0, 0.4)",
+        position: "relative",
+        overflow: "hidden"
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+        {/* Subtle top indicator bar */}
+        <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "3px", backgroundColor: healthGauge.color, opacity: 0.85 }} />
+
+        <div style={{ display: "flex", alignItems: "center", gap: "16px", flex: "1 1 340px" }}>
           <div style={{ 
-            width: "44px", 
-            height: "44px", 
-            borderRadius: "10px", 
+            width: "48px", 
+            height: "48px", 
+            borderRadius: "12px", 
             backgroundColor: healthGauge.bg, 
+            border: `1px solid ${healthGauge.color}40`,
             display: "flex", 
             alignItems: "center", 
             justifyContent: "center", 
-            color: healthGauge.color 
+            color: healthGauge.color,
+            flexShrink: 0
           }}>
             <GaugeIcon size={24} />
           </div>
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <span style={{ fontSize: "1.1rem", fontWeight: "700" }}>Operational Health:</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+              <span style={{ fontSize: "1.1rem", fontWeight: "700", color: "var(--text-primary)" }}>Operational Health:</span>
               <span style={{ 
-                padding: "2px 10px", 
+                padding: "3px 12px", 
                 borderRadius: "20px", 
-                fontSize: "0.85rem", 
+                fontSize: "0.8rem", 
                 fontWeight: "700", 
+                letterSpacing: "0.04em",
                 backgroundColor: healthGauge.bg, 
-                color: healthGauge.color 
+                color: healthGauge.color,
+                border: `1px solid ${healthGauge.color}40`
               }}>
                 {healthGauge.label.toUpperCase()}
               </span>
             </div>
-            <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: "2px" }}>
+            <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: "4px" }}>
               {healthGauge.desc}
             </div>
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "20px", fontSize: "0.85rem" }}>
-          <div>
-            <span style={{ color: "var(--text-muted)" }}>Active Incidents: </span>
-            <strong style={{ color: (healthData?.incidents?.active || 0) > 0 ? "var(--error)" : "inherit" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "24px", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+            <span style={{ color: "var(--text-muted)", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: "600" }}>Active Incidents</span>
+            <strong style={{ fontSize: "1.15rem", color: (healthData?.incidents?.active || 0) > 0 ? "var(--error)" : "var(--text-primary)" }}>
               {healthData?.incidents?.active || 0}
             </strong>
           </div>
-          <div>
-            <span style={{ color: "var(--text-muted)" }}>Staff on Duty: </span>
-            <strong>{healthData?.shifts?.active || 0}</strong>
+          <div style={{ width: "1px", height: "32px", backgroundColor: "var(--border-default)" }} />
+          <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+            <span style={{ color: "var(--text-muted)", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: "600" }}>Staff on Duty</span>
+            <strong style={{ fontSize: "1.15rem", color: "var(--text-primary)" }}>
+              {healthData?.shifts?.active || 0}
+            </strong>
           </div>
-          <div>
-            <span style={{ color: "var(--text-muted)" }}>Check-in Rate: </span>
-            <strong style={{ color: "var(--primary)" }}>{checkinRate}%</strong>
+          <div style={{ width: "1px", height: "32px", backgroundColor: "var(--border-default)" }} />
+          <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+            <span style={{ color: "var(--text-muted)", fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: "600" }}>Check-in Rate</span>
+            <strong style={{ fontSize: "1.15rem", color: "var(--green-400)" }}>
+              {checkinRate}%
+            </strong>
           </div>
         </div>
       </div>
@@ -274,7 +289,7 @@ export default function OrganizerDashboard() {
         backgroundColor: "var(--bg-secondary)", 
         padding: "10px 16px", 
         borderRadius: "8px", 
-        border: "1px solid var(--border-light)",
+        border: "1px solid var(--border-default)",
         overflow: "hidden" 
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--error)", fontWeight: "700", fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.5px", whiteSpace: "nowrap" }}>
@@ -286,7 +301,7 @@ export default function OrganizerDashboard() {
             Zero active incidents reported &bull; Normal operating conditions
           </div>
         ) : (
-          <div style={{ display: "flex", alignItems: "center", gap: "16px", overflowX: "auto", whiteSpace: "nowrap", flex: 1, paddingBottom: "2px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", overflowX: "auto", whiteSpace: "nowrap", flex: 1, paddingBottom: "2px", scrollbarWidth: "none" }}>
             {recentIncidents.map(inc => {
               const isUrgent = inc.priority === "urgent" || inc.priority === "critical";
               return (
@@ -297,22 +312,23 @@ export default function OrganizerDashboard() {
                     display: "inline-flex",
                     alignItems: "center",
                     gap: "8px",
-                    fontSize: "0.85rem",
+                    fontSize: "0.82rem",
                     padding: "4px 10px",
                     borderRadius: "6px",
                     backgroundColor: isUrgent ? "rgba(239, 68, 68, 0.15)" : "var(--bg-tertiary)",
                     color: isUrgent ? "#EF4444" : "var(--text-primary)",
                     textDecoration: "none",
-                    border: `1px solid ${isUrgent ? "rgba(239, 68, 68, 0.3)" : "var(--border-light)"}`
+                    border: `1px solid ${isUrgent ? "rgba(239, 68, 68, 0.35)" : "var(--border-default)"}`,
+                    transition: "border-color 0.15s ease",
                   }}
                 >
                   <span style={{ 
-                    fontSize: "0.7rem", 
+                    fontSize: "0.68rem", 
                     fontWeight: "800", 
                     padding: "1px 6px", 
                     borderRadius: "4px", 
-                    backgroundColor: isUrgent ? "#EF4444" : "var(--info)", 
-                    color: "#fff" 
+                    backgroundColor: isUrgent ? "#EF4444" : "rgba(93, 166, 58, 0.2)", 
+                    color: isUrgent ? "#fff" : "var(--green-300)" 
                   }}>
                     {inc.priority?.toUpperCase()}
                   </span>
@@ -342,11 +358,12 @@ export default function OrganizerDashboard() {
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
           
           {/* TOP KPI ROW (TICKET-BASED REGISTERED VS CHECKED-IN) */}
-          <div className="stats-grid" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
-            <div className="stat-card" style={{ borderLeft: "4px solid var(--error)" }}>
-              <div className="stat-icon" style={{ color: "var(--error)" }}><LuShieldAlert /></div>
+          <div className="stats-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
+            <div className="stat-card" style={{ position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "2px", backgroundColor: (healthData.incidents?.active || 0) > 0 ? "var(--error)" : "var(--border-default)" }} />
+              <div className="stat-icon" style={{ backgroundColor: "rgba(239, 68, 68, 0.15)", color: "var(--error)" }}><LuShieldAlert /></div>
               <div>
-                <div className="stat-value" style={{ color: "var(--error)" }}>{healthData.incidents?.active || 0}</div>
+                <div className="stat-value" style={{ color: (healthData.incidents?.active || 0) > 0 ? "var(--error)" : "var(--text-primary)" }}>{healthData.incidents?.active || 0}</div>
                 <div className="stat-label">Active Incidents</div>
                 <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "4px" }}>
                   {healthData.incidents?.urgent || 0} urgent &middot; {healthData.incidents?.resolved || 0} resolved
@@ -354,8 +371,9 @@ export default function OrganizerDashboard() {
               </div>
             </div>
             
-            <div className="stat-card" style={{ borderLeft: "4px solid var(--info)" }}>
-              <div className="stat-icon info"><LuUsers /></div>
+            <div className="stat-card" style={{ position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "2px", backgroundColor: "var(--border-default)" }} />
+              <div className="stat-icon" style={{ backgroundColor: "rgba(93, 166, 58, 0.15)", color: "var(--green-400)" }}><LuUsers /></div>
               <div>
                 <div className="stat-value">{healthData.shifts?.active || 0}</div>
                 <div className="stat-label">Active Staff</div>
@@ -366,15 +384,16 @@ export default function OrganizerDashboard() {
             </div>
 
             {/* TICKET-BASED ATTENDANCE KPI */}
-            <div className="stat-card" style={{ borderLeft: "4px solid var(--primary)" }}>
-              <div className="stat-icon primary"><LuTicket /></div>
+            <div className="stat-card" style={{ position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "2px", backgroundColor: "var(--green-600)" }} />
+              <div className="stat-icon" style={{ backgroundColor: "rgba(93, 166, 58, 0.15)", color: "var(--green-400)" }}><LuTicket /></div>
               <div>
                 <div className="stat-value">{checkedInAttendees}</div>
                 <div className="stat-label">Checked-In Attendees</div>
                 <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "4px" }}>
                   {registeredTickets} registered &middot; {checkinRate}% turnout
                   {healthData.crowd_breakdown?.carried_proxies > 0 && (
-                    <span style={{ display: "block", color: "#A78BFA", marginTop: "2px" }}>
+                    <span style={{ display: "block", color: "var(--green-300)", marginTop: "2px" }}>
                       👥 {healthData.crowd_breakdown.active_devices} Active Devices + {healthData.crowd_breakdown.carried_proxies} Carried Proxies
                     </span>
                   )}
@@ -382,8 +401,9 @@ export default function OrganizerDashboard() {
               </div>
             </div>
 
-            <div className="stat-card" style={{ borderLeft: "4px solid var(--success)" }}>
-              <div className="stat-icon success"><LuCircleCheck /></div>
+            <div className="stat-card" style={{ position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "2px", backgroundColor: "var(--border-default)" }} />
+              <div className="stat-icon" style={{ backgroundColor: "rgba(93, 166, 58, 0.15)", color: "var(--green-400)" }}><LuCircleCheck /></div>
               <div>
                 <div className="stat-value">{healthData.tasks?.completed || 0}</div>
                 <div className="stat-label">Tasks Completed</div>
@@ -394,17 +414,17 @@ export default function OrganizerDashboard() {
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "24px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: "24px" }}>
             
             {/* ZONE STATUS BOARD */}
             <div className="card">
               <div className="card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <h3 className="card-title" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <LuMapPin /> Venue Zone Status
+                <h3 className="card-title" style={{ display: "flex", alignItems: "center", gap: "8px", margin: 0 }}>
+                  <LuMapPin color="var(--green-400)" /> Venue Zone Status
                 </h3>
-                <Link to="/organizer/map" className="btn btn-ghost btn-sm">Full Map</Link>
+                <Link to="/organizer/map" className="btn btn-secondary btn-sm">Full Map</Link>
               </div>
-              <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div style={{ padding: "16px 0", display: "flex", flexDirection: "column", gap: "10px" }}>
                 {healthData.zones?.length === 0 ? (
                   <div style={{ color: "var(--text-muted)", textAlign: "center", padding: "20px" }}>No zones configured</div>
                 ) : (
@@ -412,30 +432,54 @@ export default function OrganizerDashboard() {
                     const capacity = zone.operating_capacity || 100;
                     const ratio = capacity > 0 ? (zone.active_count || 0) / capacity : 0;
                     const isHigh = ratio > 0.85;
+                    const isModerate = ratio > 0.65;
+                    const statusColor = isHigh ? "var(--error)" : isModerate ? "var(--warning)" : "var(--green-400)";
                     
                     return (
-                      <div key={idx} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px", backgroundColor: "var(--bg-secondary)", borderRadius: "8px", borderLeft: isHigh ? "3px solid var(--error)" : "3px solid var(--success)" }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: "600", fontSize: "0.95rem" }}>{zone.zone_name}</div>
-                          <div style={{ display: "flex", gap: "16px", fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "4px" }}>
-                            <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-                              <LuUsers size={12} /> {zone.active_staff || 0} Staff
-                            </span>
-                            {zone.active_incidents > 0 && (
-                              <span style={{ display: "flex", alignItems: "center", gap: "4px", color: "var(--error)" }}>
-                                <LuTriangleAlert size={12} /> {zone.active_incidents} Incidents
+                      <div key={idx} style={{ 
+                        display: "flex", 
+                        flexDirection: "column", 
+                        gap: "8px", 
+                        padding: "12px 14px", 
+                        backgroundColor: "var(--bg-tertiary)", 
+                        borderRadius: "8px", 
+                        border: "1px solid var(--border-default)" 
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                          <div>
+                            <div style={{ fontWeight: "700", fontSize: "0.95rem", color: "var(--text-primary)" }}>{zone.zone_name}</div>
+                            <div style={{ display: "flex", gap: "14px", fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                              <span style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                                <LuUsers size={12} color="var(--green-400)" /> {zone.active_staff || 0} Staff
                               </span>
-                            )}
+                              {zone.active_incidents > 0 && (
+                                <span style={{ display: "flex", alignItems: "center", gap: "4px", color: "var(--error)", fontWeight: "600" }}>
+                                  <LuTriangleAlert size={12} /> {zone.active_incidents} Incident{zone.active_incidents === 1 ? "" : "s"}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div style={{ textAlign: "right" }}>
+                            <div style={{ fontSize: "1.15rem", fontWeight: "800", color: statusColor, lineHeight: "1" }}>
+                              {zone.active_count || 0}
+                            </div>
+                            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "3px" }}>
+                              {capacity > 0 ? `${Math.round(ratio * 100)}% cap` : "people"}
+                            </div>
                           </div>
                         </div>
-                        <div style={{ textAlign: "right" }}>
-                          <div style={{ fontSize: "1.2rem", fontWeight: "700", color: isHigh ? "var(--error)" : "var(--text-primary)" }}>
-                            {zone.active_count || 0}
+
+                        {/* Mini capacity bar */}
+                        {capacity > 0 && (
+                          <div style={{ width: "100%", height: "4px", backgroundColor: "var(--bg-secondary)", borderRadius: "2px", overflow: "hidden" }}>
+                            <div style={{ 
+                              width: `${Math.min(ratio * 100, 100)}%`, 
+                              height: "100%", 
+                              backgroundColor: statusColor,
+                              transition: "width 0.4s ease"
+                            }} />
                           </div>
-                          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                            {capacity > 0 ? `${Math.round(ratio * 100)}% capacity` : "people"}
-                          </div>
-                        </div>
+                        )}
                       </div>
                     );
                   })
@@ -444,40 +488,64 @@ export default function OrganizerDashboard() {
             </div>
 
             {/* QUICK ACTIONS & COMMS */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
               <div className="card">
-                <div className="card-header">
-                  <h3 className="card-title">Quick Dispatch</h3>
+                <div className="card-header" style={{ marginBottom: "14px" }}>
+                  <h3 className="card-title" style={{ margin: 0 }}>Quick Dispatch</h3>
                 </div>
-                <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
-                  <Link to="/organizer/incidents" className="btn btn-outline" style={{ justifyContent: "center", borderColor: "var(--error)", color: "var(--error)" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  <Link 
+                    to="/organizer/incidents" 
+                    className="btn btn-secondary" 
+                    style={{ 
+                      justifyContent: "center", 
+                      borderColor: "rgba(204, 62, 62, 0.4)", 
+                      background: "rgba(204, 62, 62, 0.08)",
+                      color: "#EF4444" 
+                    }}
+                  >
                     <LuShieldAlert size={16} /> Report Emergency
                   </Link>
-                  <Link to="/organizer/comms" className="btn btn-outline" style={{ justifyContent: "center", borderColor: "var(--info)", color: "var(--info)" }}>
+                  <Link 
+                    to="/organizer/comms" 
+                    className="btn btn-secondary" 
+                    style={{ 
+                      justifyContent: "center", 
+                      borderColor: "rgba(93, 166, 58, 0.4)", 
+                      background: "rgba(93, 166, 58, 0.08)",
+                      color: "var(--green-300)" 
+                    }}
+                  >
                     <LuMessageSquare size={16} /> Broadcast Message
                   </Link>
-                  <Link to="/organizer/tasks" className="btn btn-outline" style={{ justifyContent: "center" }}>
-                    <LuCircleCheck size={16} /> Assign Task
+                  <Link 
+                    to="/organizer/tasks" 
+                    className="btn btn-secondary" 
+                    style={{ justifyContent: "center" }}
+                  >
+                    <LuCircleCheck size={16} color="var(--green-400)" /> Assign Task
                   </Link>
                 </div>
               </div>
 
               <div className="card">
-                <div className="card-header">
-                  <h3 className="card-title">Communications</h3>
+                <div className="card-header" style={{ marginBottom: "14px" }}>
+                  <h3 className="card-title" style={{ margin: 0 }}>Communications</h3>
                 </div>
-                <div style={{ padding: "16px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-                    <span style={{ color: "var(--text-secondary)" }}>Total Sent</span>
-                    <span style={{ fontWeight: "600" }}>{healthData.communications?.total_messages || 0}</span>
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: "var(--bg-tertiary)", borderRadius: "6px" }}>
+                    <span style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}>Total Sent</span>
+                    <span style={{ fontWeight: "700", fontFamily: "monospace" }}>{healthData.communications?.total_messages || 0}</span>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-                    <span style={{ color: "var(--text-secondary)" }}>Broadcasts</span>
-                    <span style={{ fontWeight: "600" }}>{healthData.communications?.broadcasts || 0}</span>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: "var(--bg-tertiary)", borderRadius: "6px" }}>
+                    <span style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}>Broadcasts</span>
+                    <span style={{ fontWeight: "700", fontFamily: "monospace" }}>{healthData.communications?.broadcasts || 0}</span>
                   </div>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ color: "var(--text-secondary)" }}>Urgent</span>
-                    <span style={{ fontWeight: "600", color: "var(--error)" }}>{healthData.communications?.urgent || 0}</span>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 12px", background: "var(--bg-tertiary)", borderRadius: "6px" }}>
+                    <span style={{ color: "var(--text-secondary)", fontSize: "0.85rem" }}>Urgent Alerts</span>
+                    <span style={{ fontWeight: "700", fontFamily: "monospace", color: (healthData.communications?.urgent || 0) > 0 ? "var(--error)" : "var(--text-primary)" }}>
+                      {healthData.communications?.urgent || 0}
+                    </span>
                   </div>
                 </div>
               </div>

@@ -40,6 +40,7 @@ export default function OrganizerVolunteers() {
   const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
   const [newTeam, setNewTeam] = useState({ name: "", description: "", zone_name: "" });
   const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
+  const [shiftErrors, setShiftErrors] = useState({});
   const [newShift, setNewShift] = useState({ volunteer_id: "", shift_name: "Operations Shift", scheduled_start: "", scheduled_end: "", zone_name: "" });
 
   useEffect(() => {
@@ -136,6 +137,27 @@ export default function OrganizerVolunteers() {
   // Shift Actions
   const handleCreateShift = async (e) => {
     e.preventDefault();
+    const errs = {};
+    if (!newShift.scheduled_start) {
+      errs.scheduled_start = "Start time is required";
+    }
+    if (!newShift.scheduled_end) {
+      errs.scheduled_end = "End time is required";
+    }
+    if (newShift.scheduled_start && newShift.scheduled_end) {
+      const start = new Date(newShift.scheduled_start).getTime();
+      const end = new Date(newShift.scheduled_end).getTime();
+      if (end <= start) {
+        errs.scheduled_end = "Shift end time must be after scheduled start time";
+      }
+    }
+
+    if (Object.keys(errs).length > 0) {
+      setShiftErrors(errs);
+      toast(Object.values(errs)[0], "warning");
+      return;
+    }
+
     try {
       await api.post("/api/organizer/shifts", {
         ...newShift,
@@ -143,6 +165,7 @@ export default function OrganizerVolunteers() {
       });
       toast("Shift scheduled successfully", "success");
       setIsShiftModalOpen(false);
+      setShiftErrors({});
       setNewShift({ volunteer_id: "", shift_name: "Operations Shift", scheduled_start: "", scheduled_end: "", zone_name: "" });
       fetchData();
     } catch (err) {
@@ -291,16 +314,16 @@ export default function OrganizerVolunteers() {
               </Link>
             </div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
+            <div className="table-container">
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Volunteer</th>
-                    <th>Role / Assignment</th>
-                    <th>Zone</th>
-                    <th>Shift Hours</th>
-                    <th>Status</th>
-                    <th>Actions</th>
+                    <th style={{ minWidth: "180px" }}>Volunteer</th>
+                    <th style={{ minWidth: "160px" }}>Role / Assignment</th>
+                    <th style={{ minWidth: "140px" }}>Zone</th>
+                    <th style={{ minWidth: "150px" }}>Shift Hours</th>
+                    <th style={{ minWidth: "120px" }}>Status</th>
+                    <th style={{ minWidth: "110px", textAlign: "right" }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -681,21 +704,30 @@ export default function OrganizerVolunteers() {
                     <label className="form-label">Start Time *</label>
                     <input 
                       type="datetime-local" 
-                      className="form-input" 
+                      className={`form-input ${shiftErrors.scheduled_start ? "error" : ""}`} 
                       value={newShift.scheduled_start}
-                      onChange={e => setNewShift({...newShift, scheduled_start: e.target.value})}
+                      onChange={e => {
+                        setNewShift({...newShift, scheduled_start: e.target.value});
+                        if (shiftErrors.scheduled_start) setShiftErrors(prev => ({ ...prev, scheduled_start: null }));
+                      }}
                       required
                     />
+                    {shiftErrors.scheduled_start && <p className="form-error">{shiftErrors.scheduled_start}</p>}
                   </div>
                   <div className="form-group">
                     <label className="form-label">End Time *</label>
                     <input 
                       type="datetime-local" 
-                      className="form-input" 
+                      min={newShift.scheduled_start || undefined}
+                      className={`form-input ${shiftErrors.scheduled_end ? "error" : ""}`} 
                       value={newShift.scheduled_end}
-                      onChange={e => setNewShift({...newShift, scheduled_end: e.target.value})}
+                      onChange={e => {
+                        setNewShift({...newShift, scheduled_end: e.target.value});
+                        if (shiftErrors.scheduled_end) setShiftErrors(prev => ({ ...prev, scheduled_end: null }));
+                      }}
                       required
                     />
+                    {shiftErrors.scheduled_end && <p className="form-error">{shiftErrors.scheduled_end}</p>}
                   </div>
                 </div>
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "8px" }}>

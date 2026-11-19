@@ -266,17 +266,17 @@ export default function OrganizerIncidents() {
             </div>
           </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div className="table-container">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Incident</th>
-                  <th>Priority & Status</th>
-                  <th>Zone Sector</th>
-                  <th>Reported Time</th>
-                  <th>Assigned Staff</th>
-                  <th>Evidence</th>
-                  <th>Actions</th>
+                  <th style={{ minWidth: "180px" }}>Incident</th>
+                  <th style={{ minWidth: "130px" }}>Priority & Status</th>
+                  <th style={{ minWidth: "140px" }}>Zone Sector</th>
+                  <th style={{ minWidth: "140px" }}>Reported Time</th>
+                  <th style={{ minWidth: "150px" }}>Assigned Staff</th>
+                  <th style={{ minWidth: "110px" }}>Evidence</th>
+                  <th style={{ minWidth: "120px", textAlign: "right" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>

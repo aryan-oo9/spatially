@@ -272,6 +272,9 @@ export default function OrganizerVenues() {
   const validate = () => {
     const newErrors = {};
     if (!form.name.trim()) newErrors.name = "Venue name is required";
+    if (form.default_capacity !== "" && form.default_capacity !== null && parseInt(form.default_capacity, 10) < 0) {
+      newErrors.default_capacity = "Default capacity cannot be negative";
+    }
     if (form.floors.length === 0) newErrors.floors = "At least one base floor is required";
     form.floors.forEach((f, idx) => {
       if (!f.name.trim()) {
@@ -287,7 +290,11 @@ export default function OrganizerVenues() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!validate()) return;
+    if (!validate()) {
+      const firstErr = Object.values(errors)[0] || "Please correct the highlighted fields";
+      toast(firstErr, "warning");
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -392,7 +399,7 @@ export default function OrganizerVenues() {
                   flexDirection: "column",
                   justifyContent: "space-between",
                   transition: "transform 0.15s ease, box-shadow 0.15s ease",
-                  border: "1px solid var(--border-light)",
+                  border: "1px solid var(--border-default)",
                 }}
               >
                 <div>
@@ -427,12 +434,12 @@ export default function OrganizerVenues() {
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                      <LuLayers size={15} style={{ color: "var(--primary-color, #10B981)" }} />
+                      <LuLayers size={15} style={{ color: "var(--green-400, #5DA63A)" }} />
                       <span><strong>{levels.length}</strong> Floor{levels.length === 1 ? "" : "s"}</span>
                     </div>
                     {venue.default_capacity > 0 && (
                       <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                        <LuUsers size={15} style={{ color: "#3B82F6" }} />
+                        <LuUsers size={15} style={{ color: "var(--green-400, #5DA63A)" }} />
                         <span>Cap: <strong>{venue.default_capacity}</strong></span>
                       </div>
                     )}
@@ -452,8 +459,8 @@ export default function OrganizerVenues() {
                         <span
                           key={lvl.id || lvl.level_index}
                           style={{
-                            background: "var(--bg-card)",
-                            border: "1px solid var(--border-light)",
+                            background: "var(--bg-tertiary)",
+                            border: "1px solid var(--border-default)",
                             padding: "4px 8px",
                             borderRadius: "6px",
                             fontSize: "0.8rem",
@@ -462,7 +469,7 @@ export default function OrganizerVenues() {
                             gap: "5px",
                           }}
                         >
-                          <strong style={{ color: "var(--primary-color, #10B981)", fontFamily: "monospace" }}>
+                          <strong style={{ color: "var(--green-400, #5DA63A)", fontFamily: "monospace" }}>
                             [{lvl.short_code || `L${lvl.level_index}`}]
                           </strong>
                           <span>{lvl.name}</span>
@@ -473,7 +480,7 @@ export default function OrganizerVenues() {
                 </div>
 
                 {/* Card Actions */}
-                <div style={{ display: "flex", gap: "8px", borderTop: "1px solid var(--border-light)", paddingTop: "12px", marginTop: "12px" }}>
+                <div style={{ display: "flex", gap: "8px", borderTop: "1px solid var(--border-default)", paddingTop: "12px", marginTop: "12px" }}>
                   <button
                     type="button"
                     className="btn btn-secondary btn-sm"
@@ -538,9 +545,9 @@ export default function OrganizerVenues() {
               bottom: 0,
               width: "100%",
               maxWidth: "580px",
-              background: "var(--bg-card, #0f172a)",
-              boxShadow: "-12px 0 35px rgba(0, 0, 0, 0.55)",
-              borderLeft: "1px solid var(--border-light)",
+              background: "var(--bg-secondary, #0E140E)",
+              boxShadow: "-16px 0 45px rgba(0, 0, 0, 0.75)",
+              borderLeft: "1px solid var(--border-default)",
               zIndex: 1060,
               display: "flex",
               flexDirection: "column",
@@ -554,14 +561,14 @@ export default function OrganizerVenues() {
                 justifyContent: "space-between",
                 alignItems: "center",
                 padding: "20px 24px",
-                borderBottom: "1px solid var(--border-light)",
-                background: "var(--bg-secondary)",
+                borderBottom: "1px solid var(--border-default)",
+                background: "var(--bg-tertiary, #151D15)",
                 flexShrink: 0,
               }}
             >
               <div>
                 <h2 style={{ fontSize: "1.25rem", fontWeight: "700", display: "flex", alignItems: "center", gap: "10px", margin: 0 }}>
-                  <LuBuilding style={{ color: "var(--primary-color, #10B981)" }} />
+                  <LuBuilding style={{ color: "var(--green-400, #5DA63A)" }} />
                   {editingVenue ? `Edit Venue: ${editingVenue.name}` : cloneSourceVenueId ? "Create Copy of Venue" : "Add New Physical Venue"}
                 </h2>
                 <p style={{ color: "var(--text-muted)", fontSize: "0.82rem", marginTop: "4px", marginBottom: 0 }}>
@@ -587,15 +594,15 @@ export default function OrganizerVenues() {
                 {venues.length > 0 && !editingVenue && (
                   <div
                     style={{
-                      background: "rgba(16, 185, 129, 0.06)",
-                      border: "1px dashed rgba(16, 185, 129, 0.35)",
+                      background: "rgba(93, 166, 58, 0.06)",
+                      border: "1px solid rgba(93, 166, 58, 0.25)",
                       borderRadius: "10px",
-                      padding: "14px 16px",
+                      padding: "16px",
                       marginBottom: "24px",
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
-                      <LuCopy size={16} style={{ color: "var(--primary-color, #10B981)" }} />
+                      <LuCopy size={16} style={{ color: "var(--green-400, #5DA63A)" }} />
                       <strong style={{ fontSize: "0.9rem", color: "var(--text-primary)" }}>
                         Copy From An Existing Venue
                       </strong>
@@ -604,10 +611,10 @@ export default function OrganizerVenues() {
                       Select a venue to automatically copy its capacity, address, and all floor layouts:
                     </p>
                     <select
-                      className="form-select form-select-sm"
+                      className="form-select"
                       value={cloneSourceVenueId}
                       onChange={(e) => handleCloneSelectChange(e.target.value)}
-                      style={{ background: "var(--bg-card)" }}
+                      style={{ height: "40px" }}
                     >
                       <option value="">-- Start from scratch (Blank Template) --</option>
                       {venues.map((v) => (
@@ -622,7 +629,7 @@ export default function OrganizerVenues() {
                 {/* Section 1: Venue Information */}
                 <div style={{ marginBottom: "28px" }}>
                   <h4 style={{ fontSize: "0.95rem", fontWeight: "700", marginBottom: "14px", color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "8px" }}>
-                    <span style={{ background: "var(--primary-color, #10B981)", color: "#fff", width: "20px", height: "20px", borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "0.75rem" }}>1</span>
+                    <span style={{ background: "var(--green-600, #3A7220)", color: "#fff", width: "22px", height: "22px", borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "0.75rem", fontWeight: "700" }}>1</span>
                     Venue Information
                   </h4>
 
@@ -652,7 +659,7 @@ export default function OrganizerVenues() {
                   </div>
 
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
-                    <div className="form-group">
+                    <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label" htmlFor="v-type">Venue Type</label>
                       <select
                         id="v-type"
@@ -667,27 +674,38 @@ export default function OrganizerVenues() {
                       </select>
                     </div>
 
-                    <div className="form-group">
+                    <div className="form-group" style={{ marginBottom: 0 }}>
                       <label className="form-label" htmlFor="v-cap">Default Venue Capacity</label>
                       <input
                         id="v-cap"
                         type="number"
                         min="0"
-                        className="form-input"
+                        step="1"
+                        className={`form-input ${errors.default_capacity ? "error" : ""}`}
                         placeholder="e.g. 3500"
                         value={form.default_capacity}
-                        onChange={(e) => setForm({ ...form, default_capacity: e.target.value })}
+                        onKeyDown={(e) => {
+                          if (e.key === "-" || e.key === "e" || e.key === "+") e.preventDefault();
+                        }}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "" || parseInt(val, 10) >= 0) {
+                            setForm({ ...form, default_capacity: val });
+                            if (errors.default_capacity) setErrors(prev => ({ ...prev, default_capacity: null }));
+                          }
+                        }}
                       />
+                      {errors.default_capacity && <p className="form-error">{errors.default_capacity}</p>}
                     </div>
                   </div>
                 </div>
 
                 {/* Section 2: Floors & Levels Configuration */}
-                <div style={{ borderTop: "1px solid var(--border-light)", paddingTop: "20px" }}>
+                <div style={{ borderTop: "1px solid var(--border-default)", paddingTop: "20px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "10px" }}>
                     <div>
                       <h4 style={{ fontSize: "0.95rem", fontWeight: "700", color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "8px", margin: 0 }}>
-                        <span style={{ background: "var(--primary-color, #10B981)", color: "#fff", width: "20px", height: "20px", borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "0.75rem" }}>2</span>
+                        <span style={{ background: "var(--green-600, #3A7220)", color: "#fff", width: "22px", height: "22px", borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "0.75rem", fontWeight: "700" }}>2</span>
                         Architectural Floors & Levels
                       </h4>
                       <p style={{ color: "var(--text-muted)", fontSize: "0.8rem", marginTop: "3px", marginBottom: 0 }}>
@@ -696,7 +714,7 @@ export default function OrganizerVenues() {
                     </div>
 
                     {/* Floor Counter Controller */}
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "var(--bg-secondary)", padding: "4px 8px", borderRadius: "8px", border: "1px solid var(--border-light)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", background: "var(--bg-tertiary)", padding: "4px 8px", borderRadius: "8px", border: "1px solid var(--border-default)" }}>
                       <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: "600" }}>Total Floors:</span>
                       <button
                         type="button"
@@ -707,7 +725,7 @@ export default function OrganizerVenues() {
                       >
                         -
                       </button>
-                      <strong style={{ minWidth: "20px", textAlign: "center", fontSize: "0.95rem" }}>
+                      <strong style={{ minWidth: "20px", textAlign: "center", fontSize: "0.95rem", color: "var(--text-primary)" }}>
                         {form.floors.length}
                       </strong>
                       <button
@@ -727,8 +745,8 @@ export default function OrganizerVenues() {
                       <div
                         key={idx}
                         style={{
-                          background: idx === 0 ? "rgba(16, 185, 129, 0.05)" : "var(--bg-secondary)",
-                          border: idx === 0 ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid var(--border-light)",
+                          background: idx === 0 ? "rgba(93, 166, 58, 0.08)" : "var(--bg-tertiary)",
+                          border: idx === 0 ? "1px solid rgba(93, 166, 58, 0.3)" : "1px solid var(--border-default)",
                           padding: "10px 12px",
                           borderRadius: "10px",
                           display: "grid",
@@ -743,12 +761,12 @@ export default function OrganizerVenues() {
                             style={{
                               fontSize: "0.72rem",
                               fontWeight: "700",
-                              padding: "3px 6px",
-                              borderRadius: "4px",
-                              background: idx === 0 ? "var(--primary-color, #10B981)" : "var(--bg-card)",
+                              padding: "4px 8px",
+                              borderRadius: "6px",
+                              background: idx === 0 ? "var(--green-600, #3A7220)" : "var(--bg-secondary)",
                               color: idx === 0 ? "#fff" : "var(--text-secondary)",
                               display: "inline-block",
-                              border: idx === 0 ? "none" : "1px solid var(--border-light)",
+                              border: idx === 0 ? "none" : "1px solid var(--border-default)",
                             }}
                           >
                             {idx === 0 ? "Base" : `Floor ${idx}`}
@@ -801,7 +819,7 @@ export default function OrganizerVenues() {
                               type="button"
                               className="btn btn-ghost btn-sm"
                               onClick={() => removeFloor(idx)}
-                              style={{ color: "var(--error, #EF4444)", padding: "4px" }}
+                              style={{ color: "var(--error, #CC3E3E)", padding: "4px" }}
                               title="Remove this floor"
                             >
                               <LuTrash2 size={15} />
@@ -830,15 +848,15 @@ export default function OrganizerVenues() {
                   display: "flex",
                   justifyContent: "flex-end",
                   gap: "12px",
-                  borderTop: "1px solid var(--border-light)",
+                  borderTop: "1px solid var(--border-default)",
                   padding: "16px 24px",
-                  background: "var(--bg-secondary)",
+                  background: "var(--bg-tertiary, #151D15)",
                   flexShrink: 0,
                 }}
               >
                 <button
                   type="button"
-                  className="btn btn-ghost"
+                  className="btn btn-secondary"
                   onClick={() => setPanelOpen(false)}
                   disabled={submitting}
                 >

@@ -137,15 +137,16 @@ export default function OrganizerCrowd() {
   // Headcount Calibration submit
   const handleCalibrate = async (e, zoneId) => {
     e.preventDefault();
-    if (!calibratedCount || isNaN(calibratedCount)) {
-      toast("Please enter a valid count", "warning");
+    const countNum = parseInt(calibratedCount, 10);
+    if (calibratedCount === "" || isNaN(countNum) || countNum < 0) {
+      toast("Please enter a valid non-negative turnstile headcount (>= 0)", "warning");
       return;
     }
     setCalibrating(true);
     try {
       await api.post(`/api/organizer/crowd/calibrate?event_id=${selectedEventId}`, {
         zone_id: zoneId,
-        manual_count: parseInt(calibratedCount, 10),
+        manual_count: countNum,
         notes: calibratedNotes || "Manual turnstile recount",
       });
       toast("Manual calibration recorded!", "success");
@@ -304,7 +305,7 @@ export default function OrganizerCrowd() {
           {/* TOP METRICS */}
           <div className="stats-grid" style={{ marginBottom: "20px" }}>
             <div className="stat-card">
-              <div className="stat-icon info"><LuUsers /></div>
+              <div className="stat-icon" style={{ backgroundColor: "rgba(93, 166, 58, 0.15)", color: "var(--green-400)" }}><LuUsers /></div>
               <div>
                 <div className="stat-value">{totalCrowd + (crowdData?.carried_proxies || 0)}</div>
                 <div className="stat-label">
@@ -323,7 +324,7 @@ export default function OrganizerCrowd() {
               </div>
             </div>
             <div className="stat-card">
-              <div className="stat-icon warning"><LuRadar /></div>
+              <div className="stat-icon" style={{ backgroundColor: "rgba(93, 166, 58, 0.15)", color: "var(--green-400)" }}><LuRadar /></div>
               <div>
                 <div className="stat-value">{crowdData.raw_counts?.length || 0}</div>
                 <div className="stat-label">Active Scanners Reporting</div>
@@ -339,9 +340,9 @@ export default function OrganizerCrowd() {
             style={{ 
               marginBottom: "24px", 
               padding: "22px",
-              background: "linear-gradient(180deg, rgba(14, 165, 233, 0.06) 0%, rgba(15, 23, 42, 0.8) 100%)",
-              border: "1px solid rgba(14, 165, 233, 0.3)",
-              boxShadow: "0 8px 24px rgba(0, 0, 0, 0.25)",
+              background: "var(--bg-secondary)",
+              border: "1px solid var(--border-default)",
+              boxShadow: "0 4px 20px rgba(0, 0, 0, 0.35)",
               borderRadius: "12px",
               position: "relative"
             }}
@@ -349,23 +350,24 @@ export default function OrganizerCrowd() {
             {/* Header with Title and Autonomous Mode Toggle */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px", marginBottom: "18px" }}>
               <div>
-                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                   <div style={{ 
-                    width: "34px", 
-                    height: "34px", 
-                    borderRadius: "8px", 
-                    background: "rgba(14, 165, 233, 0.2)", 
+                    width: "38px", 
+                    height: "38px", 
+                    borderRadius: "10px", 
+                    background: "rgba(93, 166, 58, 0.15)", 
+                    border: "1px solid rgba(93, 166, 58, 0.25)",
                     display: "flex", 
                     alignItems: "center", 
                     justifyContent: "center",
-                    color: "var(--primary)"
+                    color: "var(--green-400)"
                   }}>
-                    <LuSparkles size={18} />
+                    <LuSparkles size={20} />
                   </div>
                   <div>
                     <h3 style={{ fontSize: "1.1rem", fontWeight: "700", display: "flex", alignItems: "center", gap: "8px", margin: 0 }}>
                       AI Crowd Redistribution & Sponsor Diversion Engine
-                      <span className="badge" style={{ background: "rgba(58, 114, 32, 0.2)", color: "var(--green-300)", fontSize: "0.7rem", padding: "2px 8px" }}>
+                      <span className="badge badge-success" style={{ fontSize: "0.7rem", padding: "2px 8px" }}>
                         Gemini 3.5 Flash Lite
                       </span>
                     </h3>
@@ -377,7 +379,7 @@ export default function OrganizerCrowd() {
               </div>
 
               {/* Autonomous Mode Toggle */}
-              <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "var(--bg-secondary)", padding: "8px 14px", borderRadius: "8px", border: "1px solid var(--border-light)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", background: "var(--bg-tertiary)", padding: "8px 14px", borderRadius: "8px", border: "1px solid var(--border-default)" }}>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
                   <span style={{ fontSize: "0.75rem", fontWeight: "700", display: "flex", alignItems: "center", gap: "6px" }}>
                     <LuBot size={14} color={diversionData?.auto_diversion_enabled ? "var(--green-400)" : "var(--text-muted)"} />
@@ -389,8 +391,8 @@ export default function OrganizerCrowd() {
                 </div>
 
                 <button
-                  className={`btn btn-sm ${diversionData?.auto_diversion_enabled ? "btn-primary" : "btn-outline"}`}
-                  style={{ fontSize: "0.78rem", padding: "5px 12px", display: "flex", alignItems: "center", gap: "6px" }}
+                  className={`btn btn-sm ${diversionData?.auto_diversion_enabled ? "btn-primary" : "btn-secondary"}`}
+                  style={{ fontSize: "0.78rem", padding: "6px 12px", display: "flex", alignItems: "center", gap: "6px" }}
                   onClick={handleToggleAutoDiversion}
                   disabled={autoDiversionLoading}
                 >
@@ -486,25 +488,37 @@ export default function OrganizerCrowd() {
                 </div>
               </div>
             ) : (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "12px", background: "rgba(58, 114, 32, 0.08)", border: "1px solid rgba(58, 114, 32, 0.2)", borderRadius: "8px", padding: "12px 16px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <LuCheck size={18} color="var(--green-400)" />
+              <div style={{ 
+                display: "flex", 
+                alignItems: "center", 
+                justifyContent: "space-between", 
+                flexWrap: "wrap", 
+                gap: "12px", 
+                background: "rgba(93, 166, 58, 0.08)", 
+                border: "1px solid rgba(93, 166, 58, 0.25)", 
+                borderRadius: "10px", 
+                padding: "14px 18px" 
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                  <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: "rgba(93, 166, 58, 0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <LuCheck size={18} color="var(--green-400)" />
+                  </div>
                   <div>
-                    <div style={{ fontSize: "0.85rem", fontWeight: "600", color: "#fff" }}>
+                    <div style={{ fontSize: "0.9rem", fontWeight: "600", color: "#fff" }}>
                       Venue Crowd Flow is Balanced
                     </div>
-                    <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                    <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
                       All monitored zones are currently operating within safe thresholds. Gemini AI is standing by to route crowd surges if any zone exceeds 85%.
                     </div>
                   </div>
                 </div>
 
                 <button 
-                  className="btn btn-sm btn-ghost" 
+                  className="btn btn-sm btn-secondary" 
                   style={{ fontSize: "0.78rem", display: "flex", alignItems: "center", gap: "6px" }}
                   onClick={() => handleTriggerZoneDiversion("", "")}
                 >
-                  <LuSparkles size={14} color="var(--primary)" /> Test Surge Dispatch
+                  <LuSparkles size={14} color="var(--green-400)" /> Test Surge Dispatch
                 </button>
               </div>
             )}
@@ -514,11 +528,11 @@ export default function OrganizerCrowd() {
 
           {/* 5-MINUTE ROLLING SURGE CHART */}
           <div className="card" style={{ marginBottom: "24px", padding: "20px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <h3 style={{ fontSize: "1rem", fontWeight: "700", display: "flex", alignItems: "center", gap: "8px" }}>
-                <LuTrendingUp size={18} color="var(--primary)" /> Rolling Attendance Surge Velocity
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "8px" }}>
+              <h3 style={{ fontSize: "1rem", fontWeight: "700", display: "flex", alignItems: "center", gap: "8px", margin: 0 }}>
+                <LuTrendingUp size={18} color="var(--green-400)" /> Rolling Attendance Surge Velocity
               </h3>
-              <span className="badge info" style={{ fontSize: "0.75rem" }}>Live Stream (5m window)</span>
+              <span className="badge badge-success" style={{ fontSize: "0.75rem" }}>Live Stream (5m window)</span>
             </div>
 
             <div style={{ width: "100%", height: 180 }}>
@@ -526,17 +540,17 @@ export default function OrganizerCrowd() {
                 <AreaChart data={timelineData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="crowdGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#0EA5E9" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#0EA5E9" stopOpacity={0.0} />
+                      <stop offset="5%" stopColor="#10B981" stopOpacity={0.35} />
+                      <stop offset="95%" stopColor="#10B981" stopOpacity={0.0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                   <XAxis dataKey="time" stroke="var(--text-muted)" fontSize={11} tickLine={false} />
                   <YAxis stroke="var(--text-muted)" fontSize={11} tickLine={false} />
                   <Tooltip 
-                    contentStyle={{ backgroundColor: "#0F172A", borderColor: "rgba(255,255,255,0.1)", borderRadius: "8px", fontSize: "0.8rem" }}
+                    contentStyle={{ backgroundColor: "#0E140E", borderColor: "#1E2B1E", borderRadius: "8px", fontSize: "0.8rem", color: "#F0F6FC" }}
                   />
-                  <Area type="monotone" dataKey="devices" stroke="#0EA5E9" strokeWidth={2} fillOpacity={1} fill="url(#crowdGradient)" />
+                  <Area type="monotone" dataKey="devices" stroke="#10B981" strokeWidth={2} fillOpacity={1} fill="url(#crowdGradient)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
@@ -568,7 +582,7 @@ export default function OrganizerCrowd() {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "14px" }}>
                     <div>
                       <h3 style={{ fontSize: "1.1rem", fontWeight: "700", display: "flex", alignItems: "center", gap: "6px" }}>
-                        <LuMapPin size={16} color="var(--primary)" />
+                        <LuMapPin size={16} color="var(--green-400)" />
                         {zoneName}
                       </h3>
                       <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "4px" }}>
@@ -578,12 +592,12 @@ export default function OrganizerCrowd() {
 
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
                       {isOvercrowded && (
-                        <div className="badge" style={{ backgroundColor: "var(--error)", color: "#fff", display: "flex", alignItems: "center", gap: "4px" }}>
+                        <div className="badge badge-error" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                           <LuTriangleAlert size={12} /> Bottleneck Peak
                         </div>
                       )}
                       {isStale && (
-                        <span className="badge" style={{ backgroundColor: "rgba(245,158,11,0.2)", color: "#F59E0B", fontSize: "0.7rem" }} title="Telemetry not updated in >5 minutes">
+                        <span className="badge badge-pending" title="Telemetry not updated in >5 minutes">
                           <LuClock size={11} /> Stale &gt;5m
                         </span>
                       )}
@@ -598,14 +612,14 @@ export default function OrganizerCrowd() {
                       / {capacity > 0 ? capacity : "∞"} max capacity ({Math.round(ratio * 100)}%)
                     </div>
                     {data.carried_proxies > 0 && (
-                      <div style={{ marginLeft: "auto", padding: "2px 8px", borderRadius: "12px", background: "rgba(139, 92, 246, 0.15)", color: "#A78BFA", fontSize: "0.75rem", fontWeight: "600", display: "flex", alignItems: "center", gap: "4px" }}>
+                      <div style={{ marginLeft: "auto", padding: "3px 8px", borderRadius: "12px", background: "rgba(93, 166, 58, 0.15)", color: "var(--green-300)", fontSize: "0.75rem", fontWeight: "600", display: "flex", alignItems: "center", gap: "4px" }}>
                         <LuUsers size={12} /> +{data.carried_proxies} Proxies
                       </div>
                     )}
                   </div>
                   
                   {capacity > 0 && (
-                    <div style={{ width: "100%", height: "8px", backgroundColor: "var(--bg-secondary)", borderRadius: "4px", overflow: "hidden", marginBottom: "14px" }}>
+                    <div style={{ width: "100%", height: "8px", backgroundColor: "var(--bg-tertiary)", border: "1px solid var(--border-default)", borderRadius: "4px", overflow: "hidden", marginBottom: "14px" }}>
                       <div style={{ 
                         height: "100%", 
                         width: `${Math.min(ratio * 100, 100)}%`, 
@@ -616,7 +630,7 @@ export default function OrganizerCrowd() {
                   )}
 
                   {/* Zone Actions: Calibrate & AI Crowd Relief Button */}
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--border-light)", paddingTop: "12px", gap: "8px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--border-default)", paddingTop: "12px", gap: "8px" }}>
                     <button
                       className="btn btn-sm btn-ghost"
                       style={{ fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "6px" }}
@@ -627,35 +641,42 @@ export default function OrganizerCrowd() {
                     </button>
 
                     <button
-                      className="btn btn-sm btn-outline"
+                      className={`btn btn-sm ${isOvercrowded ? "btn-danger" : "btn-secondary"}`}
                       style={{ 
-                        fontSize: "0.75rem", 
+                        fontSize: "0.78rem", 
                         display: "flex", 
                         alignItems: "center", 
-                        gap: "5px",
-                        borderColor: isOvercrowded ? "var(--error)" : "rgba(14, 165, 233, 0.4)",
-                        color: isOvercrowded ? "var(--error)" : "var(--primary)",
-                        backgroundColor: isOvercrowded ? "rgba(239, 68, 68, 0.08)" : "transparent"
+                        gap: "6px",
                       }}
                       onClick={() => handleTriggerZoneDiversion(data.zone_id, zoneName)}
                       title="Disperse attendees to an under-visited sponsor stall"
                     >
-                      <LuSparkles size={13} />
+                      <LuSparkles size={13} color={isOvercrowded ? "#fff" : "var(--green-400)"} />
                       {isOvercrowded ? "Relieve Congestion" : "AI Crowd Relief"}
                     </button>
                   </div>
 
                   {/* Manual Calibration Input Drawer */}
                   {isCalibrating && (
-                    <form onSubmit={(e) => handleCalibrate(e, data.zone_id)} style={{ marginTop: "12px", background: "var(--bg-secondary)", padding: "12px", borderRadius: "8px" }}>
-                      <div style={{ fontSize: "0.8rem", fontWeight: "700", marginBottom: "8px" }}>Manual Recount Override:</div>
+                    <form onSubmit={(e) => handleCalibrate(e, data.zone_id)} style={{ marginTop: "12px", background: "var(--bg-tertiary)", border: "1px solid var(--border-default)", padding: "12px", borderRadius: "8px" }}>
+                      <div style={{ fontSize: "0.8rem", fontWeight: "700", marginBottom: "8px", color: "var(--text-primary)" }}>Manual Recount Override:</div>
                       <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
                         <input
                           type="number"
-                          className="form-input"
+                          min="0"
+                          step="1"
+                          className="form-input form-input-sm"
                           placeholder="Turnstile Headcount"
                           value={calibratedCount}
-                          onChange={(e) => setCalibratedCount(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "-" || e.key === "e" || e.key === "E" || e.key === "+") e.preventDefault();
+                          }}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === "" || parseInt(val, 10) >= 0) {
+                              setCalibratedCount(val);
+                            }
+                          }}
                           required
                           style={{ fontSize: "0.85rem", padding: "6px 10px" }}
                         />
@@ -665,7 +686,7 @@ export default function OrganizerCrowd() {
                       </div>
                       <input
                         type="text"
-                        className="form-input"
+                        className="form-input form-input-sm"
                         placeholder="Notes (e.g. Gate 2 turnstile sync)"
                         value={calibratedNotes}
                         onChange={(e) => setCalibratedNotes(e.target.value)}
@@ -775,16 +796,16 @@ export default function OrganizerCrowd() {
                 </div>
 
                 {/* Push Notification Broadcast Checkbox */}
-                <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", background: "rgba(14, 165, 233, 0.08)", padding: "10px 12px", borderRadius: "8px", border: "1px solid rgba(14, 165, 233, 0.2)" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: "10px", cursor: "pointer", background: "rgba(93, 166, 58, 0.08)", padding: "10px 12px", borderRadius: "8px", border: "1px solid rgba(93, 166, 58, 0.25)" }}>
                   <input
                     type="checkbox"
                     checked={autoBroadcast}
                     onChange={(e) => setAutoBroadcast(e.target.checked)}
-                    style={{ width: "16px", height: "16px" }}
+                    style={{ width: "16px", height: "16px", accentColor: "var(--green-500)" }}
                   />
                   <div>
                     <div style={{ fontSize: "0.85rem", fontWeight: "600", display: "flex", alignItems: "center", gap: "6px" }}>
-                      <LuBell size={14} color="var(--primary)" /> Real-Time Push Notification
+                      <LuBell size={14} color="var(--green-400)" /> Real-Time Push Notification
                     </div>
                     <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
                       Broadcasts instant mobile alert to attendees via Supabase Realtime channel.

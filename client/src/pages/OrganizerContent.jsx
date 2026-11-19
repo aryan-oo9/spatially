@@ -359,6 +359,10 @@ export default function OrganizerContent() {
   // Session Handlers
   const handleSaveSession = async (e) => {
     e.preventDefault();
+    if (sessionForm.start_time && sessionForm.end_time && sessionForm.end_time <= sessionForm.start_time) {
+      toast("Session end time must be after start time", "warning");
+      return;
+    }
     try {
       if (editingSession) {
         await api.put(`/api/organizer/sessions/${editingSession.id}`, sessionForm);
@@ -388,10 +392,15 @@ export default function OrganizerContent() {
   // Activity Handlers
   const handleSaveActivity = async (e) => {
     e.preventDefault();
+    const pts = activityForm.points_reward !== "" ? parseInt(activityForm.points_reward, 10) : 50;
+    if (activityForm.points_reward !== "" && !isNaN(pts) && pts < 0) {
+      toast("Points reward cannot be negative", "warning");
+      return;
+    }
     try {
       const payload = {
         ...activityForm,
-        points_reward: parseInt(activityForm.points_reward, 10) || 50,
+        points_reward: Math.max(0, isNaN(pts) ? 50 : pts),
       };
       if (editingActivity) {
         await api.put(`/api/organizer/activities/${editingActivity.id}`, payload);
@@ -1606,7 +1615,7 @@ export default function OrganizerContent() {
                   </div>
                   <div className="form-group">
                     <label className="form-label">End Time</label>
-                    <input type="time" className="form-input" value={sessionForm.end_time} onChange={e => setSessionForm({...sessionForm, end_time: e.target.value})} />
+                    <input type="time" min={sessionForm.start_time || undefined} className="form-input" value={sessionForm.end_time} onChange={e => setSessionForm({...sessionForm, end_time: e.target.value})} />
                   </div>
                 </div>
                 <div className="modal-footer" style={{ padding: "16px 0 0", marginTop: "12px" }}>
@@ -1642,7 +1651,22 @@ export default function OrganizerContent() {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
                   <div className="form-group">
                     <label className="form-label">Points Reward</label>
-                    <input type="number" className="form-input" value={activityForm.points_reward} onChange={e => setActivityForm({...activityForm, points_reward: e.target.value})} />
+                    <input 
+                      type="number" 
+                      min="0"
+                      step="1"
+                      className="form-input" 
+                      value={activityForm.points_reward} 
+                      onKeyDown={(e) => {
+                        if (e.key === "-" || e.key === "e" || e.key === "+") e.preventDefault();
+                      }}
+                      onChange={e => {
+                        const v = e.target.value;
+                        if (v === "" || parseInt(v, 10) >= 0) {
+                          setActivityForm({...activityForm, points_reward: v});
+                        }
+                      }} 
+                    />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Target Zone</label>

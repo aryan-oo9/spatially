@@ -331,10 +331,10 @@ export default function OrganizerLostFound() {
         </div>
 
         {/* Action Controls & Event Select */}
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
           <select
-            className="input-field"
-            style={{ width: "auto", minWidth: "200px" }}
+            className="form-select"
+            style={{ width: "auto", minWidth: "220px", height: "40px" }}
             value={selectedEventId}
             onChange={(e) => setSelectedEventId(e.target.value)}
           >
@@ -350,7 +350,7 @@ export default function OrganizerLostFound() {
             onClick={() => fetchItems()}
             disabled={isRefreshing}
             title="Refresh items"
-            style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}
+            style={{ display: "flex", alignItems: "center", gap: "0.4rem", height: "40px" }}
           >
             <LuRefreshCw className={isRefreshing ? "spin" : ""} />
             Refresh
@@ -359,7 +359,7 @@ export default function OrganizerLostFound() {
           <button
             className="btn btn-primary"
             onClick={() => setIsCreateOpen(true)}
-            style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}
+            style={{ display: "flex", alignItems: "center", gap: "0.4rem", height: "40px" }}
           >
             <LuPlus />
             Log New Item
@@ -424,28 +424,30 @@ export default function OrganizerLostFound() {
         }}
       >
         {/* Search */}
-        <div style={{ position: "relative", flex: "1 1 240px", minWidth: "220px" }}>
+        <div style={{ position: "relative", flex: "1 1 260px", minWidth: "220px" }}>
           <LuSearch
             style={{
               position: "absolute",
-              left: "0.75rem",
+              left: "12px",
               top: "50%",
               transform: "translateY(-50%)",
               color: "var(--text-muted)",
+              pointerEvents: "none",
+              fontSize: "1rem",
             }}
           />
           <input
             type="text"
-            className="input-field"
+            className="form-input"
             placeholder="Search items, descriptions, locations..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ paddingLeft: "2.25rem", width: "100%" }}
+            style={{ paddingLeft: "38px", height: "42px" }}
           />
         </div>
 
         {/* Type Filter Buttons */}
-        <div style={{ display: "flex", borderRadius: "8px", overflow: "hidden", border: "1px solid var(--border-default)" }}>
+        <div style={{ display: "flex", borderRadius: "var(--radius-md)", overflow: "hidden", border: "1px solid var(--border-default)", height: "42px" }}>
           {[
             { id: "all", label: "All Items" },
             { id: "lost", label: "Lost Only" },
@@ -455,14 +457,16 @@ export default function OrganizerLostFound() {
               key={tab.id}
               onClick={() => setTypeFilter(tab.id)}
               style={{
-                padding: "0.5rem 0.9rem",
+                padding: "0 14px",
                 fontSize: "0.85rem",
                 fontWeight: 600,
                 border: "none",
                 cursor: "pointer",
-                background: typeFilter === tab.id ? "var(--primary-600, #0284c7)" : "var(--bg-secondary)",
-                color: typeFilter === tab.id ? "#fff" : "var(--text-secondary)",
-                transition: "background 0.2s",
+                background: typeFilter === tab.id ? "var(--green-600, #16a34a)" : "var(--bg-secondary)",
+                color: typeFilter === tab.id ? "#ffffff" : "var(--text-secondary)",
+                transition: "background 0.2s, color 0.2s",
+                display: "flex",
+                alignItems: "center",
               }}
             >
               {tab.label}
@@ -471,12 +475,12 @@ export default function OrganizerLostFound() {
         </div>
 
         {/* Status Filter */}
-        <div style={{ minWidth: "160px" }}>
+        <div style={{ minWidth: "160px", flex: "1 1 160px" }}>
           <select
-            className="input-field"
+            className="form-select"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            style={{ width: "100%" }}
+            style={{ width: "100%", height: "42px" }}
           >
             <option value="all">All Statuses</option>
             <option value="submitted">Submitted / Open</option>
@@ -487,12 +491,12 @@ export default function OrganizerLostFound() {
         </div>
 
         {/* Category Filter */}
-        <div style={{ minWidth: "160px" }}>
+        <div style={{ minWidth: "160px", flex: "1 1 160px" }}>
           <select
-            className="input-field"
+            className="form-select"
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            style={{ width: "100%" }}
+            style={{ width: "100%", height: "42px" }}
           >
             {CATEGORIES.map((cat) => (
               <option key={cat.id} value={cat.id}>
@@ -511,7 +515,7 @@ export default function OrganizerLostFound() {
               setStatusFilter("all");
               setCategoryFilter("all");
             }}
-            style={{ fontSize: "0.8rem", padding: "0.45rem 0.75rem" }}
+            style={{ fontSize: "0.85rem", height: "42px", padding: "0 14px", whiteSpace: "nowrap" }}
           >
             Reset Filters
           </button>
@@ -755,179 +759,185 @@ export default function OrganizerLostFound() {
       {isCreateOpen && (
         <div className="modal-overlay" onClick={() => setIsCreateOpen(false)}>
           <div
-            className="modal-content"
+            className="modal"
             onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: "560px", width: "100%", maxHeight: "90vh", overflowY: "auto" }}
+            style={{ maxWidth: "580px", width: "100%" }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
-              <h2 style={{ fontSize: "1.25rem", fontWeight: 700, margin: 0 }}>Log Lost & Found Report</h2>
+            <div className="modal-header">
+              <h3>Log Lost & Found Report</h3>
               <button
+                className="btn btn-ghost"
                 onClick={() => setIsCreateOpen(false)}
-                style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: "1.2rem" }}
+                style={{ fontSize: "1.2rem", padding: "4px 8px" }}
               >
                 <LuX />
               </button>
             </div>
 
             <form onSubmit={handleCreateSubmit}>
-              {/* Report Type Toggle */}
-              <div style={{ marginBottom: "1rem" }}>
-                <label className="form-label" style={{ fontWeight: 600, display: "block", marginBottom: "0.5rem" }}>
-                  Report Classification
-                </label>
-                <div style={{ display: "flex", gap: "0.75rem" }}>
-                  <button
-                    type="button"
-                    onClick={() => setNewItem({ ...newItem, report_type: "found" })}
-                    style={{
-                      flex: 1,
-                      padding: "0.75rem",
-                      borderRadius: "8px",
-                      border: newItem.report_type === "found" ? "2px solid #0284c7" : "1px solid var(--border-default)",
-                      background: newItem.report_type === "found" ? "rgba(2, 132, 199, 0.12)" : "var(--bg-secondary)",
-                      color: newItem.report_type === "found" ? "#38bdf8" : "var(--text-secondary)",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      display: "flex",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                    }}
-                  >
-                    <LuCircleCheck /> Found Item
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setNewItem({ ...newItem, report_type: "lost" })}
-                    style={{
-                      flex: 1,
-                      padding: "0.75rem",
-                      borderRadius: "8px",
-                      border: newItem.report_type === "lost" ? "2px solid #ef4444" : "1px solid var(--border-default)",
-                      background: newItem.report_type === "lost" ? "rgba(239, 68, 68, 0.12)" : "var(--bg-secondary)",
-                      color: newItem.report_type === "lost" ? "#f87171" : "var(--text-secondary)",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      display: "flex",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                    }}
-                  >
-                    <LuCircleAlert /> Lost Item Inquiry
-                  </button>
-                </div>
-              </div>
-
-              {/* Title & Category */}
-              <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
+              <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                {/* Report Type Toggle */}
                 <div>
-                  <label className="form-label" style={{ fontWeight: 600, display: "block", marginBottom: "0.35rem" }}>
-                    Item Title *
+                  <label className="form-label">
+                    Report Classification
+                  </label>
+                  <div style={{ display: "flex", gap: "0.75rem" }}>
+                    <button
+                      type="button"
+                      onClick={() => setNewItem({ ...newItem, report_type: "found" })}
+                      style={{
+                        flex: 1,
+                        padding: "10px 14px",
+                        borderRadius: "var(--radius-md)",
+                        border: newItem.report_type === "found" ? "2px solid var(--green-500, #10b981)" : "1px solid var(--border-default)",
+                        background: newItem.report_type === "found" ? "rgba(16, 185, 129, 0.15)" : "var(--bg-tertiary)",
+                        color: newItem.report_type === "found" ? "var(--green-400, #34d399)" : "var(--text-secondary)",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        display: "flex",
+                        justifyContent: "center",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                        transition: "all 0.2s",
+                      }}
+                    >
+                      <LuCircleCheck /> Found Item
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewItem({ ...newItem, report_type: "lost" })}
+                      style={{
+                        flex: 1,
+                        padding: "10px 14px",
+                        borderRadius: "var(--radius-md)",
+                        border: newItem.report_type === "lost" ? "2px solid #ef4444" : "1px solid var(--border-default)",
+                        background: newItem.report_type === "lost" ? "rgba(239, 68, 68, 0.15)" : "var(--bg-tertiary)",
+                        color: newItem.report_type === "lost" ? "#f87171" : "var(--text-secondary)",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        display: "flex",
+                        justifyContent: "center",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                        transition: "all 0.2s",
+                      }}
+                    >
+                      <LuCircleAlert /> Lost Item Inquiry
+                    </button>
+                  </div>
+                </div>
+
+                {/* Title & Category */}
+                <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: "12px" }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">
+                      Item Title *
+                    </label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      required
+                      placeholder="e.g. iPhone 15 Pro with Blue Case"
+                      value={newItem.title}
+                      onChange={(e) => setNewItem({ ...newItem, title: e.target.value })}
+                    />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">
+                      Category
+                    </label>
+                    <select
+                      className="form-select"
+                      value={newItem.category}
+                      onChange={(e) => setNewItem({ ...newItem, category: e.target.value })}
+                    >
+                      {CATEGORIES.filter((c) => c.id !== "all").map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Description */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">
+                    Description & Identifying Characteristics
+                  </label>
+                  <textarea
+                    className="form-textarea"
+                    rows={3}
+                    placeholder="Distinctive marks, stickers, serial details, color..."
+                    value={newItem.description}
+                    onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
+                    style={{ minHeight: "80px" }}
+                  />
+                </div>
+
+                {/* Location: Zone & Specific */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">
+                      Event Zone / Room
+                    </label>
+                    <select
+                      className="form-select"
+                      value={newItem.zone_id}
+                      onChange={(e) => setNewItem({ ...newItem, zone_id: e.target.value })}
+                    >
+                      <option value="">Select Zone (Optional)</option>
+                      {zones.map((z) => (
+                        <option key={z.id} value={z.id}>
+                          {z.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">
+                      Specific Location
+                    </label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      placeholder="e.g. Near Booth 14, Main Hall"
+                      value={newItem.specific_location}
+                      onChange={(e) => setNewItem({ ...newItem, specific_location: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                {/* Image URL & Pickup Instructions */}
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">
+                    Photo URL (Optional)
+                  </label>
+                  <input
+                    type="url"
+                    className="form-input"
+                    placeholder="https://images.example.com/item.jpg"
+                    value={newItem.image_url}
+                    onChange={(e) => setNewItem({ ...newItem, image_url: e.target.value })}
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">
+                    Pickup & Storage Instructions
                   </label>
                   <input
                     type="text"
-                    className="input-field"
-                    required
-                    placeholder="e.g. iPhone 15 Pro with Blue Case"
-                    value={newItem.title}
-                    onChange={(e) => setNewItem({ ...newItem, title: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="form-label" style={{ fontWeight: 600, display: "block", marginBottom: "0.35rem" }}>
-                    Category
-                  </label>
-                  <select
-                    className="input-field"
-                    value={newItem.category}
-                    onChange={(e) => setNewItem({ ...newItem, category: e.target.value })}
-                  >
-                    {CATEGORIES.filter((c) => c.id !== "all").map((cat) => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Description */}
-              <div style={{ marginBottom: "1rem" }}>
-                <label className="form-label" style={{ fontWeight: 600, display: "block", marginBottom: "0.35rem" }}>
-                  Description & Identifying Characteristics
-                </label>
-                <textarea
-                  className="input-field"
-                  rows={3}
-                  placeholder="Distinctive marks, stickers, serial details, color..."
-                  value={newItem.description}
-                  onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
-                />
-              </div>
-
-              {/* Location: Zone & Specific */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "1rem" }}>
-                <div>
-                  <label className="form-label" style={{ fontWeight: 600, display: "block", marginBottom: "0.35rem" }}>
-                    Event Zone / Room
-                  </label>
-                  <select
-                    className="input-field"
-                    value={newItem.zone_id}
-                    onChange={(e) => setNewItem({ ...newItem, zone_id: e.target.value })}
-                  >
-                    <option value="">Select Zone (Optional)</option>
-                    {zones.map((z) => (
-                      <option key={z.id} value={z.id}>
-                        {z.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="form-label" style={{ fontWeight: 600, display: "block", marginBottom: "0.35rem" }}>
-                    Specific Location
-                  </label>
-                  <input
-                    type="text"
-                    className="input-field"
-                    placeholder="e.g. Near Booth 14, Main Hall"
-                    value={newItem.specific_location}
-                    onChange={(e) => setNewItem({ ...newItem, specific_location: e.target.value })}
+                    className="form-input"
+                    placeholder="e.g. Handed to Desk 1; owner must verify lock screen"
+                    value={newItem.pickup_instructions}
+                    onChange={(e) => setNewItem({ ...newItem, pickup_instructions: e.target.value })}
                   />
                 </div>
               </div>
 
-              {/* Image URL & Pickup Instructions */}
-              <div style={{ marginBottom: "1rem" }}>
-                <label className="form-label" style={{ fontWeight: 600, display: "block", marginBottom: "0.35rem" }}>
-                  Photo URL (Optional)
-                </label>
-                <input
-                  type="url"
-                  className="input-field"
-                  placeholder="https://images.example.com/item.jpg"
-                  value={newItem.image_url}
-                  onChange={(e) => setNewItem({ ...newItem, image_url: e.target.value })}
-                />
-              </div>
-
-              <div style={{ marginBottom: "1.25rem" }}>
-                <label className="form-label" style={{ fontWeight: 600, display: "block", marginBottom: "0.35rem" }}>
-                  Pickup & Storage Instructions
-                </label>
-                <input
-                  type="text"
-                  className="input-field"
-                  placeholder="e.g. Handed to Desk 1; owner must verify lock screen"
-                  value={newItem.pickup_instructions}
-                  onChange={(e) => setNewItem({ ...newItem, pickup_instructions: e.target.value })}
-                />
-              </div>
-
-              {/* Modal Buttons */}
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem" }}>
+              {/* Modal Footer */}
+              <div className="modal-footer">
                 <button
                   type="button"
                   className="btn btn-secondary"
@@ -948,48 +958,51 @@ export default function OrganizerLostFound() {
       {/* UPDATE STATUS MODAL */}
       {activeItem && (
         <div className="modal-overlay" onClick={() => setActiveItem(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "480px", width: "100%" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
-              <h2 style={{ fontSize: "1.2rem", fontWeight: 700, margin: 0 }}>Update "{activeItem.title}"</h2>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "500px", width: "100%" }}>
+            <div className="modal-header">
+              <h3>Update "{activeItem.title}"</h3>
               <button
+                className="btn btn-ghost"
                 onClick={() => setActiveItem(null)}
-                style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: "1.2rem" }}
+                style={{ fontSize: "1.2rem", padding: "4px 8px" }}
               >
                 <LuX />
               </button>
             </div>
 
             <form onSubmit={handleUpdateStatusSubmit}>
-              <div style={{ marginBottom: "1rem" }}>
-                <label className="form-label" style={{ fontWeight: 600, display: "block", marginBottom: "0.35rem" }}>
-                  Status
-                </label>
-                <select
-                  className="input-field"
-                  value={editStatus}
-                  onChange={(e) => setEditStatus(e.target.value)}
-                >
-                  <option value="submitted">Submitted / Open</option>
-                  <option value="in_review">In Review / Investigating</option>
-                  <option value="matched">Matched with Owner / Item</option>
-                  <option value="resolved">Resolved / Returned to Owner</option>
-                </select>
+              <div className="modal-body" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">
+                    Status
+                  </label>
+                  <select
+                    className="form-select"
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value)}
+                  >
+                    <option value="submitted">Submitted / Open</option>
+                    <option value="in_review">In Review / Investigating</option>
+                    <option value="matched">Matched with Owner / Item</option>
+                    <option value="resolved">Resolved / Returned to Owner</option>
+                  </select>
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">
+                    Pickup & Verification Instructions
+                  </label>
+                  <textarea
+                    className="form-textarea"
+                    rows={3}
+                    placeholder="e.g. Stored in North Security safe. Claim with government photo ID."
+                    value={editInstructions}
+                    onChange={(e) => setEditInstructions(e.target.value)}
+                  />
+                </div>
               </div>
 
-              <div style={{ marginBottom: "1.25rem" }}>
-                <label className="form-label" style={{ fontWeight: 600, display: "block", marginBottom: "0.35rem" }}>
-                  Pickup & Verification Instructions
-                </label>
-                <textarea
-                  className="input-field"
-                  rows={3}
-                  placeholder="e.g. Stored in North Security safe. Claim with government photo ID."
-                  value={editInstructions}
-                  onChange={(e) => setEditInstructions(e.target.value)}
-                />
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem" }}>
+              <div className="modal-footer">
                 <button
                   type="button"
                   className="btn btn-secondary"
@@ -1011,14 +1024,15 @@ export default function OrganizerLostFound() {
       {previewPhoto && (
         <div className="modal-overlay" onClick={() => setPreviewPhoto(null)}>
           <div
-            className="modal-content"
+            className="modal"
             onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: "600px", padding: "1rem", textAlign: "center" }}
+            style={{ maxWidth: "600px", width: "100%", padding: "1.25rem", textAlign: "center" }}
           >
             <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.5rem" }}>
               <button
+                className="btn btn-ghost"
                 onClick={() => setPreviewPhoto(null)}
-                style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: "1.2rem" }}
+                style={{ fontSize: "1.2rem", padding: "4px 8px" }}
               >
                 <LuX />
               </button>
