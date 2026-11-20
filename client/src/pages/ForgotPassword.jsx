@@ -4,6 +4,7 @@ import { api } from "../utils/api";
 import { useToast } from "../components/Toast";
 import { validateEmail } from "../utils/validators";
 import { LuLoader, LuArrowLeft, LuCheck } from "react-icons/lu";
+import ThemeToggle from "../components/ThemeToggle";
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
@@ -42,6 +43,9 @@ export default function ForgotPassword() {
   if (success) {
     return (
       <div className="auth-page">
+        <div style={{ position: "absolute", top: "20px", right: "24px", zIndex: 10 }}>
+          <ThemeToggle />
+        </div>
         <div className="auth-container">
           <div className="auth-logo">
             <h1>Spatial<span style={{ color: "var(--text-primary)" }}>Ly</span></h1>
@@ -62,6 +66,9 @@ export default function ForgotPassword() {
 
   return (
     <div className="auth-page">
+      <div style={{ position: "absolute", top: "20px", right: "24px", zIndex: 10 }}>
+        <ThemeToggle />
+      </div>
       <div className="auth-container">
         <div className="auth-logo">
           <h1>Spatial<span style={{ color: "var(--text-primary)" }}>Ly</span></h1>

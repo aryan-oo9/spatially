@@ -242,10 +242,10 @@ export default function OrganizerAnalytics() {
                           <stop offset="95%" stopColor="#38BDF8" stopOpacity={0.0} />
                         </linearGradient>
                       </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                       <XAxis dataKey="hour" stroke="var(--text-muted)" fontSize={11} tickLine={false} />
                       <YAxis stroke="var(--text-muted)" fontSize={11} tickLine={false} />
-                      <Tooltip contentStyle={{ backgroundColor: "#0F172A", borderColor: "rgba(255,255,255,0.1)", borderRadius: "8px", fontSize: "0.8rem" }} />
+                      <Tooltip contentStyle={{ backgroundColor: "var(--bg-elevated)", borderColor: "var(--border-light)", color: "var(--text-primary)", borderRadius: "8px", fontSize: "0.8rem", boxShadow: "var(--shadow-md)" }} />
                       <Area type="monotone" dataKey="cumulative" stroke="#38BDF8" strokeWidth={2} fillOpacity={1} fill="url(#velocityGrad)" name="Total Attendee Turnout" />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -271,13 +271,13 @@ export default function OrganizerAnalytics() {
                 ) : (
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={zoneFootfallData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                       <XAxis dataKey="zone" stroke="var(--text-muted)" fontSize={11} tickLine={false} />
                       <YAxis stroke="var(--text-muted)" fontSize={11} tickLine={false} />
-                      <Tooltip contentStyle={{ backgroundColor: "#0F172A", borderColor: "rgba(255,255,255,0.1)", borderRadius: "8px", fontSize: "0.8rem" }} />
+                      <Tooltip contentStyle={{ backgroundColor: "var(--bg-elevated)", borderColor: "var(--border-light)", color: "var(--text-primary)", borderRadius: "8px", fontSize: "0.8rem", boxShadow: "var(--shadow-md)" }} />
                       <Legend wrapperStyle={{ fontSize: "0.75rem", paddingTop: "8px" }} />
                       <Bar dataKey="current" fill="#0EA5E9" name="Detected Count" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="capacity" fill="rgba(255,255,255,0.15)" name="Operating Limit" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="capacity" fill="var(--border-light)" name="Operating Limit" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
@@ -304,10 +304,10 @@ export default function OrganizerAnalytics() {
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={incidentResolutionData} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                     <XAxis dataKey="category" stroke="var(--text-muted)" fontSize={11} tickLine={false} />
                     <YAxis stroke="var(--text-muted)" fontSize={11} tickLine={false} unit="m" />
-                    <Tooltip contentStyle={{ backgroundColor: "#0F172A", borderColor: "rgba(255,255,255,0.1)", borderRadius: "8px", fontSize: "0.8rem" }} />
+                    <Tooltip contentStyle={{ backgroundColor: "var(--bg-elevated)", borderColor: "var(--border-light)", color: "var(--text-primary)", borderRadius: "8px", fontSize: "0.8rem", boxShadow: "var(--shadow-md)" }} />
                     <Legend wrapperStyle={{ fontSize: "0.75rem", paddingTop: "8px" }} />
                     <Bar dataKey="mtta" fill="#F59E0B" name="MTTA (Time to Acknowledge / Dispatch)" radius={[4, 4, 0, 0]} />
                     <Bar dataKey="mttr" fill="#EF4444" name="MTTR (Time to Resolve)" radius={[4, 4, 0, 0]} />

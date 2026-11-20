@@ -3,6 +3,7 @@ import { Outlet } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import { LuMenu } from "react-icons/lu";
 import { useAuth } from "../context/AuthContext";
+import ThemeToggle from "./ThemeToggle";
 
 export default function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -26,7 +27,8 @@ export default function DashboardLayout() {
               Spatial<span style={{ color: "var(--green-400)" }}>Ly</span>
             </span>
           </div>
-          <div className="topbar-actions">
+          <div className="topbar-actions" style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+            <ThemeToggle />
             <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: "500" }}>
               {user?.nickname || user?.full_name || user?.email}
             </span>

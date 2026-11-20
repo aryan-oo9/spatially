@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { useToast } from "../components/Toast";
 import { validateEmail, validatePassword } from "../utils/validators";
 import { LuEye, LuEyeOff, LuLoader } from "react-icons/lu";
+import ThemeToggle from "../components/ThemeToggle";
 
 const REDIRECT_MAP = {
   user: "/user/dashboard",
@@ -54,6 +55,9 @@ export default function Login() {
 
   return (
     <div className="auth-page">
+      <div style={{ position: "absolute", top: "20px", right: "24px", zIndex: 10 }}>
+        <ThemeToggle />
+      </div>
       <div className="auth-container">
         <div className="auth-logo">
           <h1>Spatial<span style={{ color: "var(--text-primary)" }}>Ly</span></h1>

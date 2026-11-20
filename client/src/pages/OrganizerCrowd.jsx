@@ -425,8 +425,8 @@ export default function OrganizerCrowd() {
                     <div 
                       key={rec.id}
                       style={{
-                        background: "rgba(15, 23, 42, 0.7)",
-                        border: "1px solid rgba(255, 255, 255, 0.08)",
+                        background: "var(--bg-tertiary)",
+                        border: "1px solid var(--border-default)",
                         borderRadius: "10px",
                         padding: "16px",
                         display: "flex",
@@ -439,7 +439,7 @@ export default function OrganizerCrowd() {
                         {/* Overcrowded Source */}
                         <div style={{ flex: 1, background: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.25)", borderRadius: "8px", padding: "8px 10px" }}>
                           <div style={{ fontSize: "0.7rem", color: "#EF4444", fontWeight: "700", textTransform: "uppercase" }}>Overcrowded</div>
-                          <div style={{ fontSize: "0.9rem", fontWeight: "700", color: "#fff", display: "flex", alignItems: "center", gap: "4px" }}>
+                          <div style={{ fontSize: "0.9rem", fontWeight: "700", color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "4px" }}>
                             <LuMapPin size={13} color="#EF4444" /> {rec.source_zone.name}
                           </div>
                           <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
@@ -455,7 +455,7 @@ export default function OrganizerCrowd() {
                         {/* Low-Density Target Sponsor */}
                         <div style={{ flex: 1.2, background: "rgba(58, 114, 32, 0.1)", border: "1px solid rgba(58, 114, 32, 0.25)", borderRadius: "8px", padding: "8px 10px" }}>
                           <div style={{ fontSize: "0.7rem", color: "var(--green-400)", fontWeight: "700", textTransform: "uppercase" }}>Target Sponsor Stall</div>
-                          <div style={{ fontSize: "0.9rem", fontWeight: "700", color: "#fff", display: "flex", alignItems: "center", gap: "4px" }}>
+                          <div style={{ fontSize: "0.9rem", fontWeight: "700", color: "var(--text-primary)", display: "flex", alignItems: "center", gap: "4px" }}>
                             <LuStore size={13} color="var(--green-400)" /> {rec.sponsor.name}
                           </div>
                           <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
@@ -504,7 +504,7 @@ export default function OrganizerCrowd() {
                     <LuCheck size={18} color="var(--green-400)" />
                   </div>
                   <div>
-                    <div style={{ fontSize: "0.9rem", fontWeight: "600", color: "#fff" }}>
+                    <div style={{ fontSize: "0.9rem", fontWeight: "600", color: "var(--text-primary)" }}>
                       Venue Crowd Flow is Balanced
                     </div>
                     <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
@@ -544,11 +544,11 @@ export default function OrganizerCrowd() {
                       <stop offset="95%" stopColor="#10B981" stopOpacity={0.0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
                   <XAxis dataKey="time" stroke="var(--text-muted)" fontSize={11} tickLine={false} />
                   <YAxis stroke="var(--text-muted)" fontSize={11} tickLine={false} />
                   <Tooltip 
-                    contentStyle={{ backgroundColor: "#0E140E", borderColor: "#1E2B1E", borderRadius: "8px", fontSize: "0.8rem", color: "#F0F6FC" }}
+                    contentStyle={{ backgroundColor: "var(--bg-elevated)", borderColor: "var(--border-light)", borderRadius: "8px", fontSize: "0.8rem", color: "var(--text-primary)", boxShadow: "var(--shadow-md)" }}
                   />
                   <Area type="monotone" dataKey="devices" stroke="#10B981" strokeWidth={2} fillOpacity={1} fill="url(#crowdGradient)" />
                 </AreaChart>

@@ -905,7 +905,7 @@ export default function VenueMap({
           borderRadius: "12px", 
           overflow: "hidden", 
           border: isDragOver ? "2px dashed var(--green-400)" : "1px solid var(--border-light)",
-          backgroundColor: "#080c16",
+          backgroundColor: "var(--map-bg, #080c16)",
           userSelect: "none",
           transition: "border 0.2s ease"
         }}
@@ -957,7 +957,7 @@ export default function VenueMap({
           <defs>
             {/* Dark tech blueprint pattern */}
             <pattern id="spatiallyBlueprintGrid" width="30" height="30" patternUnits="userSpaceOnUse">
-              <path d="M 30 0 L 0 0 0 30" fill="none" stroke="rgba(255, 255, 255, 0.04)" strokeWidth="1" />
+              <path d="M 30 0 L 0 0 0 30" fill="none" stroke="var(--map-grid-stroke, rgba(255, 255, 255, 0.04))" strokeWidth="1" />
             </pattern>
 
             {/* Glowing filter for high-density zone heat */}
@@ -991,7 +991,7 @@ export default function VenueMap({
           </defs>
 
           {/* Background: Map Asset Image OR Blueprint Grid */}
-          <rect width={containerSize.w} height={containerSize.h} fill="#090e1a" />
+          <rect width={containerSize.w} height={containerSize.h} fill="var(--map-bg, #090e1a)" />
           <rect width={containerSize.w} height={containerSize.h} fill="url(#spatiallyBlueprintGrid)" />
 
           {currentLevel?.map_asset_url && (
@@ -1095,7 +1095,7 @@ export default function VenueMap({
                     width="108"
                     height="44"
                     rx="8"
-                    fill="rgba(15, 23, 42, 0.90)"
+                    fill="var(--map-card-bg, rgba(15, 23, 42, 0.90))"
                     stroke={strokeColor}
                     strokeWidth="1.2"
                     style={{ backdropFilter: "blur(6px)" }}
@@ -1120,7 +1120,7 @@ export default function VenueMap({
                   <text
                     y={levels.length > 1 && levelLabel ? "6" : "-2"}
                     textAnchor="middle"
-                    fill="#F8FAFC"
+                    fill="var(--map-card-text, #F8FAFC)"
                     fontSize="11"
                     fontWeight="700"
                     fontFamily="Inter, sans-serif"
@@ -1405,14 +1405,14 @@ export default function VenueMap({
                     width="88"
                     height="18"
                     rx="5"
-                    fill="rgba(15, 23, 42, 0.9)"
+                    fill="var(--map-card-bg, rgba(15, 23, 42, 0.9))"
                     stroke={nodeColor}
                     strokeWidth="1"
                   />
                   <text
                     y="-2"
                     textAnchor="middle"
-                    fill="#F8FAFC"
+                    fill="var(--map-card-text, #F8FAFC)"
                     fontSize="9.5"
                     fontWeight="700"
                     fontFamily="Inter, sans-serif"
@@ -1431,14 +1431,14 @@ export default function VenueMap({
                     width="76"
                     height="19"
                     rx="9.5"
-                    fill={isOvercrowded ? "#EF4444" : "rgba(15, 23, 42, 0.9)"}
+                    fill={isOvercrowded ? "#EF4444" : "var(--map-card-bg, rgba(15, 23, 42, 0.9))"}
                     stroke={isOvercrowded ? "#FECACA" : nodeColor}
                     strokeWidth="1.2"
                   />
                   <text
                     y="3.5"
                     textAnchor="middle"
-                    fill="#FFFFFF"
+                    fill={isOvercrowded ? "#FFFFFF" : "var(--map-card-text, #FFFFFF)"}
                     fontSize="9.5"
                     fontWeight="800"
                     fontFamily="Inter, sans-serif"
@@ -1473,7 +1473,7 @@ export default function VenueMap({
                       width="170"
                       height="46"
                       rx="8"
-                      fill="rgba(10, 15, 30, 0.95)"
+                      fill="var(--map-card-bg, rgba(10, 15, 30, 0.95))"
                       stroke={nodeColor}
                       strokeWidth="1.5"
                       filter="url(#incidentGlow)"
@@ -1482,7 +1482,7 @@ export default function VenueMap({
                       x="0"
                       y="-30"
                       textAnchor="middle"
-                      fill="#F8FAFC"
+                      fill="var(--map-card-text, #F8FAFC)"
                       fontSize="11"
                       fontWeight="700"
                       fontFamily="Inter, sans-serif"

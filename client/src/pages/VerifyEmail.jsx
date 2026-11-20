@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { api } from "../utils/api";
 import { LuCircleCheck, LuCircleX, LuLoader } from "react-icons/lu";
+import ThemeToggle from "../components/ThemeToggle";
 
 export default function VerifyEmail() {
   const [searchParams] = useSearchParams();
@@ -34,6 +35,9 @@ export default function VerifyEmail() {
 
   return (
     <div className="auth-page">
+      <div style={{ position: "absolute", top: "20px", right: "24px", zIndex: 10 }}>
+        <ThemeToggle />
+      </div>
       <div className="auth-container" style={{ textAlign: "center" }}>
         {status === "verifying" && (
           <>

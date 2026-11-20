@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { LuRadar, LuShield, LuTicket, LuChartColumn, LuWifi, LuEye, LuArrowRight, LuMapPin, LuUsers, LuZap } from "react-icons/lu";
+import ThemeToggle from "../components/ThemeToggle";
 
 export default function Landing() {
   const heroRef = useRef(null);
@@ -36,6 +37,7 @@ export default function Landing() {
         <div className="landing-nav-links">
           <a href="#features" className="hide-mobile">Features</a>
           <a href="#how-it-works" className="hide-mobile">How It Works</a>
+          <ThemeToggle />
           <Link to="/login" className="btn btn-primary btn-sm">
             Log In
           </Link>
