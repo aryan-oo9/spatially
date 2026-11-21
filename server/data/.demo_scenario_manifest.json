@@ -1,0 +1,26 @@
+{
+  "event_id": "c3f2d83f-60d4-427a-be3b-4351c02c526e",
+  "started_at": "2026-11-17T08:49:56.264520+00:00",
+  "original_counts": {
+    "0052e6e6-1b7d-4d30-adab-7cc9f86455db": null,
+    "580cad19-84f3-4896-a792-6b971e90fb18": {
+      "volunteer_id": "580cad19-84f3-4896-a792-6b971e90fb18",
+      "zone": "HALL",
+      "active_count": 1,
+      "updated_at": "2026-11-14T06:18:36.01604+00:00",
+      "event_id": "c3f2d83f-60d4-427a-be3b-4351c02c526e",
+      "zone_id": "0eaf6470-445a-4e1f-97f8-3d56124afa79"
+    },
+    "7f1a9d20-c5fe-4569-b40d-0d2b3ddcb857": null,
+    "d76e9005-a529-480a-8841-84aa8bb70e31": null,
+    "e9120d13-7242-4ba4-8ab4-23e3c7ea0cbc": null
+  },
+  "incident_ids": [],
+  "notification_ids": [],
+  "created_users": [
+    "7f1a9d20-c5fe-4569-b40d-0d2b3ddcb857",
+    "e9120d13-7242-4ba4-8ab4-23e3c7ea0cbc",
+    "0052e6e6-1b7d-4d30-adab-7cc9f86455db",
+    "d76e9005-a529-480a-8841-84aa8bb70e31"
+  ]
+}
